@@ -37,3 +37,10 @@ add_test(NAME input_tests COMMAND input_tests)
 add_executable(pacer_tests tests/pacer_test.cpp)
 target_include_directories(pacer_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME pacer_tests COMMAND pacer_tests)
+
+add_executable(pacer_smoke tests/pacer_smoke.cpp src/pacer.cpp)
+target_include_directories(pacer_smoke PRIVATE ${CMAKE_SOURCE_DIR}/src)
+if(WIN32)
+  target_link_libraries(pacer_smoke PRIVATE winmm)  # timeBeginPeriod fallback
+endif()
+add_test(NAME pacer_smoke COMMAND pacer_smoke)
