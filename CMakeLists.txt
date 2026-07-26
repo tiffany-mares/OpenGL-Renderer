@@ -31,4 +31,5 @@ add_test(NAME mat4_tests COMMAND mat4_tests)
 
 add_executable(input_tests tests/input_test.cpp)
 target_include_directories(input_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(input_tests PRIVATE Threads::Threads)
 add_test(NAME input_tests COMMAND input_tests)

@@ -38,26 +38,30 @@ int main() {
     // Deliberately no glfwMakeContextCurrent here: the render thread owns
     // the context; this thread owns the window and the event queue.
 
-    InputChannel input;
+    MutexChannel input;
+    FramebufferSize fb;
     {
-        InputSnapshot first;
-        glfwGetFramebufferSize(window, &first.fb_width, &first.fb_height);
-        input.publish(first);
+        int w = 0, h = 0;
+        glfwGetFramebufferSize(window, &w, &h);
+        fb.store(w, h);
     }
 
     std::atomic<bool> stop{false};
     std::atomic<bool> render_failed{false};
     std::thread render_thread(render_thread_main, window, std::cref(input),
-                              std::cref(stop), std::ref(render_failed));
+                              std::cref(fb), std::cref(stop), std::ref(render_failed));
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
             glfwSetWindowShouldClose(window, GLFW_TRUE);
 
+        int w = 0, h = 0;
+        glfwGetFramebufferSize(window, &w, &h);
+        fb.store(w, h);
+
         InputSnapshot s;
-        s.space_held = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
-        glfwGetFramebufferSize(window, &s.fb_width, &s.fb_height);
+        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) s.keys |= kKeySpace;
         s.publish_ns = static_cast<uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now().time_since_epoch())

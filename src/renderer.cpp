@@ -105,6 +105,7 @@ static const unsigned int kIndices[] = {
 };
 
 void render_thread_main(GLFWwindow* window, const InputChannel& input,
+                        const FramebufferSize& fb,
                         const std::atomic<bool>& stop, std::atomic<bool>& failed) {
     glfwMakeContextCurrent(window);
     glfwSwapInterval(0);  // must run on the context-owning thread
@@ -157,19 +158,21 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
     // Phase 5, so this spins as fast as the driver allows.
     while (!stop.load(std::memory_order_relaxed)) {
         InputSnapshot in = input.read();
+        int fb_w = 0, fb_h = 0;
+        fb.load(fb_w, fb_h);
 
         double now = glfwGetTime();
-        if (!in.space_held) angle += (now - prev) * 0.9;
+        if (!(in.keys & kKeySpace)) angle += (now - prev) * 0.9;
         prev = now;
 
-        glViewport(0, 0, in.fb_width, in.fb_height);
+        glViewport(0, 0, fb_w, fb_h);
         glClearColor(0.05f, 0.05f, 0.06f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         mat4 model = rotate({0.5f, 1.f, 0.25f}, static_cast<float>(angle));
         mat4 view = lookAt({2.2f, 1.6f, 2.6f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
         mat4 proj = perspective(1.0471976f,
-                                static_cast<float>(in.fb_width) / static_cast<float>(in.fb_height),
+                                static_cast<float>(fb_w) / static_cast<float>(fb_h),
                                 0.1f, 100.f);
         mat4 mvp = proj * view * model;
         glUseProgram(program);
