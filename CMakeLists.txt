@@ -33,3 +33,7 @@ add_executable(input_tests tests/input_test.cpp)
 target_include_directories(input_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(input_tests PRIVATE Threads::Threads)
 add_test(NAME input_tests COMMAND input_tests)
+
+add_executable(pacer_tests tests/pacer_test.cpp)
+target_include_directories(pacer_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME pacer_tests COMMAND pacer_tests)
