@@ -86,6 +86,32 @@ static GLuint link_program(const char* vs_src, const char* fs_src) {
     return p;
 }
 
+// 8 shared vertices, interleaved position (xyz) + color (rgb).
+// True per-face colors from only 8 vertices: colors are flat-shaded, and
+// every face's two triangles are wound (CCW, outward-facing) to END on a
+// vertex no other face ends on, so that provoking vertex's color paints the
+// whole face. Vertices 2 and 4 are never provoking; their colors are unused.
+static const float kVertices[] = {
+    // position            color
+    -1.f, -1.f, -1.f,      0.90f, 0.20f, 0.20f,  // 0: -Z back   (red)
+     1.f, -1.f, -1.f,      0.90f, 0.80f, 0.20f,  // 1: +X right  (yellow)
+     1.f,  1.f, -1.f,      0.f,   0.f,   0.f,    // 2: (never provoking)
+    -1.f,  1.f, -1.f,      0.20f, 0.80f, 0.80f,  // 3: +Y top    (cyan)
+    -1.f, -1.f,  1.f,      0.f,   0.f,   0.f,    // 4: (never provoking)
+     1.f, -1.f,  1.f,      0.80f, 0.30f, 0.80f,  // 5: -Y bottom (magenta)
+     1.f,  1.f,  1.f,      0.20f, 0.75f, 0.30f,  // 6: +Z front  (green)
+    -1.f,  1.f,  1.f,      0.25f, 0.35f, 0.90f,  // 7: -X left   (blue)
+};
+
+static const unsigned int kIndices[] = {
+    2, 1, 0,   3, 2, 0,  // -Z back   (provoking vertex 0)
+    4, 5, 6,   7, 4, 6,  // +Z front  (provoking vertex 6)
+    3, 0, 7,   0, 4, 7,  // -X left   (provoking vertex 7)
+    6, 5, 1,   2, 6, 1,  // +X right  (provoking vertex 1)
+    4, 0, 5,   0, 1, 5,  // -Y bottom (provoking vertex 5)
+    6, 2, 3,   7, 6, 3,  // +Y top    (provoking vertex 3)
+};
+
 static void glfw_error_callback(int code, const char* desc) {
     std::fprintf(stderr, "GLFW error %d: %s\n", code, desc);
 }
@@ -131,6 +157,22 @@ int main() {
         return EXIT_FAILURE;
     }
 
+    GLuint vao = 0, vbo = 0, ebo = 0;
+    glGenVertexArrays(1, &vao);
+    glGenBuffers(1, &vbo);
+    glGenBuffers(1, &ebo);
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof kVertices, kVertices, GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof kIndices, kIndices, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glEnable(GL_DEPTH_TEST);
+
     // Uncapped loop: swap interval is 0 and the pacer doesn't exist until
     // Phase 5, so this spins as fast as the driver allows.
     while (!glfwWindowShouldClose(window)) {
@@ -141,11 +183,17 @@ int main() {
         int w, h;
         glfwGetFramebufferSize(window, &w, &h);
         glViewport(0, 0, w, h);
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClearColor(0.05f, 0.05f, 0.06f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glUseProgram(program);
+        glBindVertexArray(vao);
+        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
         glfwSwapBuffers(window);
     }
 
+    glDeleteVertexArrays(1, &vao);
+    glDeleteBuffers(1, &vbo);
+    glDeleteBuffers(1, &ebo);
     glDeleteProgram(program);
     glfwDestroyWindow(window);
     glfwTerminate();
