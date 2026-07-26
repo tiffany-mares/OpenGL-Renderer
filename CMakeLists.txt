@@ -18,9 +18,11 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glfw)
 
-add_executable(cube src/main.cpp)
-target_include_directories(cube PRIVATE ${CMAKE_SOURCE_DIR}/extern)
-target_link_libraries(cube PRIVATE glfw)
+find_package(Threads REQUIRED)
+
+add_executable(cube src/main.cpp src/renderer.cpp)
+target_include_directories(cube PRIVATE ${CMAKE_SOURCE_DIR}/extern ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(cube PRIVATE glfw Threads::Threads)
 
 enable_testing()
 add_executable(mat4_tests tests/mat4_test.cpp)
