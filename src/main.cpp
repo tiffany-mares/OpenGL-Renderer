@@ -1,35 +1,25 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "mat4.h"
+
 #define GLAD_GL_IMPLEMENTATION
 #include <glad/gl.h>
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
-// Fixed yaw+pitch and a minimal perspective, all hardcoded: hand-rolled
-// mat4 math is Phase 2; this shader is demoted to `gl_Position = uMvp * aPos`
-// there. Colors use `flat` so the provoking (last) vertex of each triangle
-// colors the whole face — see the index buffer comment.
+// Transform comes from the CPU now (src/mat4.h). Colors stay `flat`: the
+// provoking (last) vertex of each triangle colors the whole face — see the
+// index buffer comment.
 static const char* kVertexSrc = R"glsl(
 #version 330 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aColor;
+uniform mat4 uMvp;
 flat out vec3 vColor;
 
 void main() {
-    float cy = cos(0.6), sy = sin(0.6);    // yaw ~34 deg
-    float cx = cos(0.45), sx = sin(0.45);  // pitch ~26 deg
-    vec3 p = aPos * 0.5;
-    p = vec3(cy * p.x + sy * p.z, p.y, -sy * p.x + cy * p.z); // rotate Y
-    p = vec3(p.x, cx * p.y - sx * p.z, sx * p.y + cx * p.z);  // rotate X
-    p.z -= 2.5;                                               // push away from camera
-    float f = 1.5;                 // focal length (~67 deg vertical fov)
-    float aspect = 1280.0 / 720.0;
-    float zn = 0.1, zf = 100.0;
-    gl_Position = vec4(f * p.x / aspect,
-                       f * p.y,
-                       ((zf + zn) / (zn - zf)) * p.z + (2.0 * zf * zn) / (zn - zf),
-                       -p.z);
+    gl_Position = uMvp * vec4(aPos, 1.0);
     vColor = aColor;
 }
 )glsl";
@@ -157,6 +147,8 @@ int main() {
         return EXIT_FAILURE;
     }
 
+    GLint mvpLoc = glGetUniformLocation(program, "uMvp");
+
     GLuint vao = 0, vbo = 0, ebo = 0;
     glGenVertexArrays(1, &vao);
     glGenBuffers(1, &vbo);
@@ -185,7 +177,16 @@ int main() {
         glViewport(0, 0, w, h);
         glClearColor(0.05f, 0.05f, 0.06f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        // Wall-clock rotation: orientation is a function of absolute time,
+        // not of frame count, so frame rate changes don't change the speed.
+        float t = static_cast<float>(glfwGetTime());
+        mat4 model = rotate({0.5f, 1.f, 0.25f}, t * 0.9f);
+        mat4 view = lookAt({2.2f, 1.6f, 2.6f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
+        mat4 proj = perspective(1.0471976f, static_cast<float>(w) / static_cast<float>(h),
+                                0.1f, 100.f);
+        mat4 mvp = proj * view * model;
         glUseProgram(program);
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, mvp.m);  // column-major: no transpose
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
         glfwSwapBuffers(window);
