@@ -21,3 +21,8 @@ FetchContent_MakeAvailable(glfw)
 add_executable(cube src/main.cpp)
 target_include_directories(cube PRIVATE ${CMAKE_SOURCE_DIR}/extern)
 target_link_libraries(cube PRIVATE glfw)
+
+enable_testing()
+add_executable(mat4_tests tests/mat4_test.cpp)
+target_include_directories(mat4_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME mat4_tests COMMAND mat4_tests)
