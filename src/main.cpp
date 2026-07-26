@@ -51,6 +51,9 @@ int main() {
     std::thread render_thread(render_thread_main, window, std::cref(input),
                               std::cref(fb), std::cref(stop), std::ref(render_failed));
 
+    double mx_prev = 0.0, my_prev = 0.0;
+    glfwGetCursorPos(window, &mx_prev, &my_prev);
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
@@ -62,6 +65,20 @@ int main() {
 
         InputSnapshot s;
         if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) s.keys |= kKeySpace;
+        if (glfwGetKey(window, GLFW_KEY_LEFT)  == GLFW_PRESS) s.keys |= kKeyLeft;
+        if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) s.keys |= kKeyRight;
+        if (glfwGetKey(window, GLFW_KEY_UP)    == GLFW_PRESS) s.keys |= kKeyUp;
+        if (glfwGetKey(window, GLFW_KEY_DOWN)  == GLFW_PRESS) s.keys |= kKeyDown;
+
+        // Mouse delta since the previous publish. Carried for payload size
+        // and Phase 6; nothing consumes it yet.
+        double mx = 0.0, my = 0.0;
+        glfwGetCursorPos(window, &mx, &my);
+        s.mouse_dx = static_cast<float>(mx - mx_prev);
+        s.mouse_dy = static_cast<float>(my - my_prev);
+        mx_prev = mx;
+        my_prev = my;
+
         s.publish_ns = static_cast<uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now().time_since_epoch())

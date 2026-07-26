@@ -147,11 +147,10 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
 
     glEnable(GL_DEPTH_TEST);
 
-    // Rotation accumulates wall-clock time only while unpaused, so holding
-    // SPACE (published by the main thread) visibly freezes the cube — the
-    // cheapest proof the cross-thread handoff works. glfwGetTime reads are
-    // documented any-thread.
-    double angle = 0.0;
+    // Rotation: the wall-clock spin from Phase 3 (SPACE pauses it) plus
+    // manual yaw/pitch from the arrow keys — the visible proof that key
+    // state crosses the thread boundary through whichever backend is live.
+    double angle = 0.0, yaw = 0.0, pitch = 0.0;
     double prev = glfwGetTime();
 
     // Uncapped loop: swap interval is 0 and the pacer doesn't exist until
@@ -162,14 +161,20 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
         fb.load(fb_w, fb_h);
 
         double now = glfwGetTime();
-        if (!(in.keys & kKeySpace)) angle += (now - prev) * 0.9;
+        const double dt = now - prev;
+        if (!(in.keys & kKeySpace)) angle += dt * 0.9;
+        constexpr double kManualRate = 2.2;  // rad/s while an arrow is held
+        yaw   += dt * kManualRate * (((in.keys & kKeyRight) ? 1 : 0) - ((in.keys & kKeyLeft) ? 1 : 0));
+        pitch += dt * kManualRate * (((in.keys & kKeyDown) ? 1 : 0) - ((in.keys & kKeyUp) ? 1 : 0));
         prev = now;
 
         glViewport(0, 0, fb_w, fb_h);
         glClearColor(0.05f, 0.05f, 0.06f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        mat4 model = rotate({0.5f, 1.f, 0.25f}, static_cast<float>(angle));
+        mat4 model = rotate({1.f, 0.f, 0.f}, static_cast<float>(pitch)) *
+                     rotate({0.f, 1.f, 0.f}, static_cast<float>(yaw)) *
+                     rotate({0.5f, 1.f, 0.25f}, static_cast<float>(angle));
         mat4 view = lookAt({2.2f, 1.6f, 2.6f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
         mat4 proj = perspective(1.0471976f,
                                 static_cast<float>(fb_w) / static_cast<float>(fb_h),
