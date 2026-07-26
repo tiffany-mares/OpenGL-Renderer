@@ -55,6 +55,38 @@ private:
     InputSnapshot snap_;
 };
 
+// Lock-free: one atomic word, one bit per key. Writer turns key edges into
+// fetch_or/fetch_and RMWs with release; reader does a single acquire load
+// per frame. No torn reads (single word), no ABA (bits carry no generation
+// — a set bit means "held", nothing else). The trade: 32 bits cannot carry
+// mouse deltas or publish_ns, so those read back as zero — which is exactly
+// why this backend alone is not the final answer (Phase 6 needs publish_ns).
+class BitmaskChannel final : public InputChannel {
+    static_assert(std::atomic<uint32_t>::is_always_lock_free);
+
+public:
+    void publish(const InputSnapshot& s) override {
+        const uint32_t want = s.keys;
+        const uint32_t to_set = want & ~prev_;
+        const uint32_t to_clear = prev_ & ~want;
+        if (to_set) keys_.fetch_or(to_set, std::memory_order_release);
+        if (to_clear) keys_.fetch_and(~to_clear, std::memory_order_release);
+        prev_ = want;
+    }
+
+    InputSnapshot read() const override {
+        InputSnapshot s;
+        s.keys = keys_.load(std::memory_order_acquire);  // the frame's single load
+        return s;
+    }
+
+    const char* name() const override { return "bitmask"; }
+
+private:
+    std::atomic<uint32_t> keys_{0};
+    uint32_t prev_ = 0;  // writer-thread-only: last published mask, for edge diffs
+};
+
 // Framebuffer size, published by the main thread (GLFW size queries are
 // main-thread-only), packed into one atomic word so a resize can never tear.
 // Not part of the input payload: window state, not input — and the bitmask
