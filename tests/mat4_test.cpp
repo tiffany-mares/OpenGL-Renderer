@@ -61,11 +61,66 @@ static void test_vec3_helpers() {
     expect_near(c.z, 1.f, "cross z");
 }
 
+static void test_perspective_reference() {
+    // Reference values computed by hand for fovY=60deg, aspect=16/9,
+    // zNear=0.1, zFar=100 (matches glm::perspective):
+    //   f = 1/tan(30deg) = 1.7320508
+    //   m[0]  = f/aspect                    =  0.9742786
+    //   m[5]  = f                           =  1.7320508
+    //   m[10] = (zFar+zNear)/(zNear-zFar)   = -1.0020020
+    //   m[11] = -1
+    //   m[14] = 2*zFar*zNear/(zNear-zFar)   = -0.2002002
+    // every other element exactly 0 (including m[15] — catches identity-init bugs)
+    mat4 p = perspective(1.0471976f, 16.f / 9.f, 0.1f, 100.f);
+    for (int k = 0; k < 16; ++k) {
+        float expected = 0.f;
+        if (k == 0) expected = 0.9742786f;
+        else if (k == 5) expected = 1.7320508f;
+        else if (k == 10) expected = -1.0020020f;
+        else if (k == 11) expected = -1.f;
+        else if (k == 14) expected = -0.2002002f;
+        expect_near(p.m[k], expected, "perspective element");
+    }
+}
+
+static void test_lookat() {
+    // Camera at (0,0,5) looking at origin: pure translation by -5 in z.
+    mat4 v = lookAt({0.f, 0.f, 5.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
+    expect_near(mul_row(v, 0, 0, 0, 1, 0), 0.f, "lookAt origin x");
+    expect_near(mul_row(v, 0, 0, 0, 1, 1), 0.f, "lookAt origin y");
+    expect_near(mul_row(v, 0, 0, 0, 1, 2), -5.f, "lookAt origin z");
+    // +X in world stays +X in view for this camera.
+    expect_near(mul_row(v, 1, 0, 0, 1, 0), 1.f, "lookAt +x maps to +x");
+}
+
+static void test_rotate() {
+    // 90deg about +Z maps (1,0,0) to (0,1,0).
+    mat4 r = rotate({0.f, 0.f, 1.f}, 1.5707964f);
+    expect_near(mul_row(r, 1, 0, 0, 1, 0), 0.f, "rotZ x");
+    expect_near(mul_row(r, 1, 0, 0, 1, 1), 1.f, "rotZ y");
+    expect_near(mul_row(r, 1, 0, 0, 1, 2), 0.f, "rotZ z");
+    // Rotation about an axis leaves the axis fixed (axis passed unnormalized).
+    mat4 rx = rotate({2.f, 0.f, 0.f}, 0.7f);
+    expect_near(mul_row(rx, 1, 0, 0, 1, 0), 1.f, "axis fixed x");
+    expect_near(mul_row(rx, 1, 0, 0, 1, 1), 0.f, "axis fixed y");
+}
+
+static void test_mvp_composition() {
+    // Rotate 90deg about Z then translate +1 in x: (1,0,0) -> (0,1,0) -> (1,1,0).
+    mat4 m = translate({1.f, 0.f, 0.f}) * rotate({0.f, 0.f, 1.f}, 1.5707964f);
+    expect_near(mul_row(m, 1, 0, 0, 1, 0), 1.f, "T*R x");
+    expect_near(mul_row(m, 1, 0, 0, 1, 1), 1.f, "T*R y");
+}
+
 int main() {
     test_identity();
     test_translate();
     test_multiply();
     test_vec3_helpers();
+    test_perspective_reference();
+    test_lookat();
+    test_rotate();
+    test_mvp_composition();
     if (g_failures) {
         std::fprintf(stderr, "%d failure(s)\n", g_failures);
         return 1;
