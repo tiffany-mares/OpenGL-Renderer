@@ -87,6 +87,46 @@ private:
     uint32_t prev_ = 0;  // writer-thread-only: last published mask, for edge diffs
 };
 
+// Seqlock: for a payload that outgrew the word. Single writer bumps the
+// sequence to odd, writes the payload, bumps to even; the reader copies the
+// payload and keeps it only if the sequence was even and unchanged around
+// the copy. The writer never blocks — a slow or absent reader costs it
+// nothing; the reader retries instead.
+//
+// HONESTY NOTE (also in README.md): the reader's `payload_` copy is
+// unsynchronized while the writer may be storing to it — formally a data
+// race, i.e. undefined behavior under the C++ memory model; the fences
+// below are the standard practical construction (Boehm, "Can seqlocks get
+// along with programming language memory models?") and every real CPU +
+// compiler shipping today makes the retry discard any torn copy. Naming the
+// rule being bent is the point; pretending it isn't bent would be the bug.
+class SeqlockChannel final : public InputChannel {
+public:
+    void publish(const InputSnapshot& s) override {
+        const uint32_t s0 = seq_.load(std::memory_order_relaxed);
+        seq_.store(s0 + 1, std::memory_order_relaxed);        // odd: write in progress
+        std::atomic_thread_fence(std::memory_order_release);  // odd store before payload stores
+        payload_ = s;                                         // the racy write
+        seq_.store(s0 + 2, std::memory_order_release);        // even: payload stores before this
+    }
+
+    InputSnapshot read() const override {
+        for (;;) {
+            const uint32_t s0 = seq_.load(std::memory_order_acquire);
+            if (s0 & 1u) continue;                            // writer mid-update
+            InputSnapshot s = payload_;                       // the racy read
+            std::atomic_thread_fence(std::memory_order_acquire);  // copy before recheck
+            if (seq_.load(std::memory_order_relaxed) == s0) return s;
+        }
+    }
+
+    const char* name() const override { return "seqlock"; }
+
+private:
+    std::atomic<uint32_t> seq_{0};
+    InputSnapshot payload_;
+};
+
 // Framebuffer size, published by the main thread (GLFW size queries are
 // main-thread-only), packed into one atomic word so a resize can never tear.
 // Not part of the input payload: window state, not input — and the bitmask

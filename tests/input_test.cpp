@@ -1,5 +1,7 @@
+#include <atomic>
 #include <cstdio>
 #include <string_view>
+#include <thread>
 
 #include "input_state.h"
 
@@ -63,6 +65,32 @@ static void bitmask_suite() {
     expect(ch.read().keys == 0, "bitmask clears to zero");
 }
 
+static void seqlock_stress() {
+    SeqlockChannel ch;
+    std::atomic<bool> done{false};
+    std::thread writer([&] {
+        for (uint32_t i = 1; i <= 200000; ++i) {
+            InputSnapshot s;
+            s.keys = i;
+            s.mouse_dx = static_cast<float>(i & 0xFFFF);
+            s.mouse_dy = -static_cast<float>(i & 0xFFFF);
+            s.publish_ns = uint64_t(i) * 1000003u;
+            ch.publish(s);
+        }
+        done.store(true);
+    });
+    while (!done.load()) {
+        InputSnapshot r = ch.read();
+        const bool consistent =
+            r.publish_ns == uint64_t(r.keys) * 1000003u &&
+            r.mouse_dx == static_cast<float>(r.keys & 0xFFFF) &&
+            r.mouse_dy == -static_cast<float>(r.keys & 0xFFFF);
+        expect(consistent, "seqlock stress: torn snapshot");
+        if (g_failures > 20) break;  // don't flood stderr if it's broken
+    }
+    writer.join();
+}
+
 int main() {
     {
         MutexChannel ch;
@@ -71,6 +99,13 @@ int main() {
     }
 
     bitmask_suite();
+
+    {
+        SeqlockChannel ch;
+        full_payload_suite(ch, "seqlock");
+        expect(std::string_view(ch.name()) == "seqlock", "seqlock name");
+        seqlock_stress();
+    }
 
     {
         FramebufferSize fb;
