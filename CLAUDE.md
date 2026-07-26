@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A C++20 threaded OpenGL renderer whose real subject is three systems problems: thread-affine graphics contexts, a lock-free input handoff, and precise frame pacing on general-purpose OSes. The rotating cube is the demo, not the point. Built in phases (0–8); see the project outline for the full phase plan. **Phases 0–1 are complete as of 2026-07-26.** Phase 0: CMake scaffold, GLFW 3.4 via FetchContent, vendored glad2 single-header loader (`extern/glad/gl.h`, taken from GLFW's `deps/`), 3.3 core context with `glfwSwapInterval(0)`, build-only CI matrix on windows-latest + ubuntu-latest. Phase 1: static cube in `src/main.cpp` — 8 vertices / 36 indices / one VAO-VBO-EBO, depth test on, raw GLSL strings; per-face colors come from `flat` varyings plus provoking-vertex index winding (6 of the 8 shared vertices each carry one face color — do not reorder `kIndices` casually). The view transform is hardcoded in the vertex shader pending Phase 2's hand-rolled `mat4`. Phases 2+ do not exist yet — update this file as they land.
+A C++20 threaded OpenGL renderer whose real subject is three systems problems: thread-affine graphics contexts, a lock-free input handoff, and precise frame pacing on general-purpose OSes. The rotating cube is the demo, not the point. Built in phases (0–8); see the project outline for the full phase plan. **Phases 0–2 are complete as of 2026-07-26.** Phase 0: CMake scaffold, GLFW 3.4 via FetchContent, vendored glad2 single-header loader (`extern/glad/gl.h`, taken from GLFW's `deps/`), 3.3 core context with `glfwSwapInterval(0)`, CI matrix on windows-latest + ubuntu-latest (build + ctest). Phase 1: cube in `src/main.cpp` — 8 vertices / 36 indices / one VAO-VBO-EBO, depth test on, raw GLSL strings; per-face colors come from `flat` varyings plus provoking-vertex index winding (6 of the 8 shared vertices each carry one face color — do not reorder `kIndices` casually). Phase 2: `src/mat4.h` is the project's only math library — hand-rolled, header-only, **column-major** (`m[col*4+row]`, upload with transpose=`GL_FALSE`), parameter names `zNear`/`zFar` because Windows headers define `near`/`far` as macros; tests in `tests/mat4_test.cpp` (dependency-free, includes a 16-element perspective reference check) run via `ctest` locally and in CI; the cube rotates on the wall clock (`glfwGetTime`) through a `uMvp` uniform. Phases 3+ do not exist yet — update this file as they land.
 
 **Stack:** C++20, raw OpenGL 3.3 core profile, GLFW (windowing/events only), GLAD (GL loading), CMake with FetchContent for dependencies. Deliberately excluded: SDL, SFML, glm, any engine. Matrix math is hand-rolled (`mat4`, column-major to match OpenGL).
 
@@ -14,7 +14,7 @@ A C++20 threaded OpenGL renderer whose real subject is three systems problems: t
 cmake -B build
 cmake --build build --config Release
 build/Release/cube.exe        # (Windows; build/cube on Linux)
-ctest --test-dir build        # unit tests — none yet; they start in Phase 2 (mat4)
+ctest --test-dir build -C Release --output-on-failure   # mat4 unit tests
 ```
 
 On this machine `cmake` is at `C:\Program Files\CMake\bin\cmake.exe` (may not be in older shells' PATH); the generator is Visual Studio 16 2019 (MSVC 19.29).
