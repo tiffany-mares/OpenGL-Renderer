@@ -1,7 +1,9 @@
 #pragma once
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <mutex>
+#include <string_view>
 
 // Phase 4: three input-handoff backends behind one interface, main thread ->
 // render thread. This file is the whole handoff system: payload, interface,
@@ -147,3 +149,11 @@ public:
 private:
     std::atomic<uint64_t> packed_{(uint64_t(1280) << 32) | 720};
 };
+
+// Backend selection for main(): flag string in, channel out.
+inline std::unique_ptr<InputChannel> make_input_channel(std::string_view name) {
+    if (name == "mutex") return std::make_unique<MutexChannel>();
+    if (name == "bitmask") return std::make_unique<BitmaskChannel>();
+    if (name == "seqlock") return std::make_unique<SeqlockChannel>();
+    return nullptr;
+}

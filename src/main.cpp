@@ -2,6 +2,8 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
+#include <string_view>
 #include <thread>
 
 #define GLFW_INCLUDE_NONE
@@ -14,7 +16,24 @@ static void glfw_error_callback(int code, const char* desc) {
     std::fprintf(stderr, "GLFW error %d: %s\n", code, desc);
 }
 
-int main() {
+int main(int argc, char** argv) {
+    const char* backend = "mutex";  // the baseline is the default
+    for (int i = 1; i < argc; ++i) {
+        const std::string_view arg = argv[i];
+        if (arg.rfind("--input=", 0) == 0) {
+            backend = argv[i] + 8;
+        } else {
+            std::fprintf(stderr, "usage: cube [--input=mutex|bitmask|seqlock]\n");
+            return EXIT_FAILURE;
+        }
+    }
+    std::unique_ptr<InputChannel> input = make_input_channel(backend);
+    if (!input) {
+        std::fprintf(stderr, "unknown input backend '%s' (mutex|bitmask|seqlock)\n", backend);
+        return EXIT_FAILURE;
+    }
+    std::printf("input backend: %s\n", input->name());
+
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) {
         std::fprintf(stderr, "glfwInit failed\n");
@@ -38,7 +57,6 @@ int main() {
     // Deliberately no glfwMakeContextCurrent here: the render thread owns
     // the context; this thread owns the window and the event queue.
 
-    MutexChannel input;
     FramebufferSize fb;
     {
         int w = 0, h = 0;
@@ -48,7 +66,7 @@ int main() {
 
     std::atomic<bool> stop{false};
     std::atomic<bool> render_failed{false};
-    std::thread render_thread(render_thread_main, window, std::cref(input),
+    std::thread render_thread(render_thread_main, window, std::cref(*input),
                               std::cref(fb), std::cref(stop), std::ref(render_failed));
 
     double mx_prev = 0.0, my_prev = 0.0;
@@ -83,7 +101,7 @@ int main() {
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now().time_since_epoch())
                 .count());
-        input.publish(s);
+        input->publish(s);
 
         // ~1000 Hz poll cadence. sleep_for's real resolution on stock
         // Windows is the scheduler tick; the honest pacer is Phase 5.

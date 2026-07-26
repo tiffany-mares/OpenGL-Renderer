@@ -117,6 +117,14 @@ int main() {
         expect(w == 800 && h == 600, "fb roundtrip");
     }
 
+    expect(make_input_channel("mutex") && std::string_view(make_input_channel("mutex")->name()) == "mutex",
+           "factory mutex");
+    expect(make_input_channel("bitmask") && std::string_view(make_input_channel("bitmask")->name()) == "bitmask",
+           "factory bitmask");
+    expect(make_input_channel("seqlock") && std::string_view(make_input_channel("seqlock")->name()) == "seqlock",
+           "factory seqlock");
+    expect(make_input_channel("bogus") == nullptr, "factory rejects unknown");
+
     if (g_failures) {
         std::fprintf(stderr, "%d failure(s)\n", g_failures);
         return 1;
