@@ -26,3 +26,7 @@ enable_testing()
 add_executable(mat4_tests tests/mat4_test.cpp)
 target_include_directories(mat4_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME mat4_tests COMMAND mat4_tests)
+
+add_executable(input_tests tests/input_test.cpp)
+target_include_directories(input_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME input_tests COMMAND input_tests)
