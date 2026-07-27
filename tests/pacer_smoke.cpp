@@ -3,7 +3,7 @@
 #include "pacer.h"
 
 // Integration smoke for the platform sleep paths and the thread-CPU clock:
-// pace 50 frames at 100 Hz per strategy and check wall time and CPU cost.
+// pace 50 frames at 100 Hz per strategy (TimerSpin, Timer, Spin) and check wall time and CPU cost.
 // Bounds are deliberately loose — CI runners are noisy. Undersleep is
 // impossible by construction (absolute deadlines; TimerSpin/Spin also spin),
 // so the lower bound is tight-ish; the upper bound catches "sleep path
@@ -62,6 +62,15 @@ int main() {
     if (ts.cpu_ns >= ts.elapsed_ns * 8 / 10) {
         std::fprintf(stderr, "FAIL timer_spin: cpu %.1f ms >= 80%% of elapsed - not sleeping?\n",
                      ts.cpu_ns / 1e6);
+        ++failures;
+    }
+
+    const SmokeResult tm = run_pacer(PaceStrategy::Timer);
+    failures += check("timer", tm);
+    // Timer sleeps the whole period (no spin): CPU must be well under wall time.
+    if (tm.cpu_ns >= tm.elapsed_ns * 8 / 10) {
+        std::fprintf(stderr, "FAIL timer: cpu %.1f ms >= 80%% of elapsed - not sleeping?\n",
+                     tm.cpu_ns / 1e6);
         ++failures;
     }
 
