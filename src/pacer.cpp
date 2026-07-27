@@ -1,5 +1,8 @@
 #include "pacer.h"
 
+#include <chrono>
+#include <thread>
+
 // ---------------- platform layer: monotonic clock + timed sleep ----------------
 
 #if defined(_WIN32)
@@ -24,8 +27,8 @@ uint64_t pacer_now_ns() {
     return sec * 1'000'000'000ull + rem * 1'000'000'000ull / freq;
 }
 
-FramePacer::FramePacer(uint64_t period_ns)
-    : sched_(period_ns, pacer_now_ns()) {
+FramePacer::FramePacer(uint64_t period_ns, PaceStrategy strategy)
+    : sched_(period_ns, pacer_now_ns()), strategy_(strategy) {
     // High-resolution waitable timer (Windows 10 1803+): wakes within tens
     // of microseconds instead of on the scheduler tick.
     HANDLE t = CreateWaitableTimerExW(nullptr, nullptr,
@@ -63,8 +66,21 @@ void FramePacer::sleep_until_ns(uint64_t target_ns) {
     }
 }
 
+uint64_t thread_cpu_now_ns() {
+    FILETIME creation, exit_time, kernel, user;
+    if (!GetThreadTimes(GetCurrentThread(), &creation, &exit_time, &kernel, &user))
+        return 0;
+    ULARGE_INTEGER k, u;
+    k.LowPart = kernel.dwLowDateTime;
+    k.HighPart = kernel.dwHighDateTime;
+    u.LowPart = user.dwLowDateTime;
+    u.HighPart = user.dwHighDateTime;
+    return (k.QuadPart + u.QuadPart) * 100;  // FILETIME ticks are 100 ns
+}
+
 #elif defined(__APPLE__)
 
+#include <ctime>
 #include <mach/mach_time.h>
 
 static mach_timebase_info_data_t pacer_timebase() {
@@ -83,8 +99,8 @@ uint64_t pacer_now_ns() {
     return t / tb.denom * tb.numer + t % tb.denom * tb.numer / tb.denom;
 }
 
-FramePacer::FramePacer(uint64_t period_ns)
-    : sched_(period_ns, pacer_now_ns()) {}
+FramePacer::FramePacer(uint64_t period_ns, PaceStrategy strategy)
+    : sched_(period_ns, pacer_now_ns()), strategy_(strategy) {}
 
 FramePacer::~FramePacer() = default;
 
@@ -99,6 +115,13 @@ void FramePacer::sleep_until_ns(uint64_t target_ns) {
     mach_wait_until(deadline);
 }
 
+uint64_t thread_cpu_now_ns() {
+    timespec ts;
+    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) != 0) return 0;
+    return static_cast<uint64_t>(ts.tv_sec) * 1'000'000'000ull +
+           static_cast<uint64_t>(ts.tv_nsec);
+}
+
 #else  // Linux and other POSIX
 
 #include <cerrno>
@@ -111,8 +134,8 @@ uint64_t pacer_now_ns() {
            static_cast<uint64_t>(ts.tv_nsec);
 }
 
-FramePacer::FramePacer(uint64_t period_ns)
-    : sched_(period_ns, pacer_now_ns()) {}
+FramePacer::FramePacer(uint64_t period_ns, PaceStrategy strategy)
+    : sched_(period_ns, pacer_now_ns()), strategy_(strategy) {}
 
 FramePacer::~FramePacer() = default;
 
@@ -125,6 +148,13 @@ void FramePacer::sleep_until_ns(uint64_t target_ns) {
     // is absolute, so no remaining-time arithmetic is needed.
     while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, nullptr) == EINTR) {
     }
+}
+
+uint64_t thread_cpu_now_ns() {
+    timespec ts;
+    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) != 0) return 0;
+    return static_cast<uint64_t>(ts.tv_sec) * 1'000'000'000ull +
+           static_cast<uint64_t>(ts.tv_nsec);
 }
 
 #endif
@@ -150,24 +180,53 @@ WaitStats FramePacer::wait() {
     WaitStats stats{d.deadline_ns, 0, 0, d.missed};
     if (d.missed) return stats;  // already late: start the frame immediately, schedule resynced
 
-    const uint64_t margin = margin_ns();
-    const uint64_t sleep_target = d.deadline_ns - margin;
-    if (sleep_target > now) {
-        stats.sleep_requested_ns = sleep_target - now;
-        sleep_until_ns(sleep_target);
-        const uint64_t wake = pacer_now_ns();
-        stats.sleep_actual_ns = wake - now;
-        if (wake >= sleep_target)
-            overshoot_.add(static_cast<double>(wake - sleep_target));
+    switch (strategy_) {
+    case PaceStrategy::SleepFor: {
+        // Naive baseline: one relative sleep_for all the way to the deadline.
+        // On stock Windows this wakes on the scheduler tick (~15.6 ms) — the
+        // benchmark's reason for including it.
+        stats.sleep_requested_ns = d.deadline_ns - now;
+        std::this_thread::sleep_for(std::chrono::nanoseconds(stats.sleep_requested_ns));
+        stats.sleep_actual_ns = pacer_now_ns() - now;
+        break;
     }
-    // The spin is not optional: the OS wake above lands anywhere inside a
-    // scheduler-jitter window (tens of microseconds to milliseconds,
-    // machine- and load-dependent). Sleeping all the way to the deadline
-    // hands that jitter directly to the frame time; spinning the last
-    // measured-margin stretch trades a sliver of CPU for a deadline hit
-    // accurate to the clock read.
-    while (pacer_now_ns() < d.deadline_ns) {
-        // tight clock re-read; each call is itself a brief pause
+    case PaceStrategy::Timer: {
+        // High-res timer only: absolute sleep to the deadline, no margin, no
+        // spin — the OS wake jitter lands directly in the frame time.
+        stats.sleep_requested_ns = d.deadline_ns - now;
+        sleep_until_ns(d.deadline_ns);
+        stats.sleep_actual_ns = pacer_now_ns() - now;
+        break;
+    }
+    case PaceStrategy::TimerSpin: {
+        const uint64_t margin = margin_ns();
+        const uint64_t sleep_target = d.deadline_ns - margin;
+        if (sleep_target > now) {
+            stats.sleep_requested_ns = sleep_target - now;
+            sleep_until_ns(sleep_target);
+            const uint64_t wake = pacer_now_ns();
+            stats.sleep_actual_ns = wake - now;
+            if (wake >= sleep_target)
+                overshoot_.add(static_cast<double>(wake - sleep_target));
+        }
+        // The spin is not optional: the OS wake above lands anywhere inside a
+        // scheduler-jitter window (tens of microseconds to milliseconds,
+        // machine- and load-dependent). Sleeping all the way to the deadline
+        // hands that jitter directly to the frame time; spinning the last
+        // measured-margin stretch trades a sliver of CPU for a deadline hit
+        // accurate to the clock read.
+        while (pacer_now_ns() < d.deadline_ns) {
+            // tight clock re-read; each call is itself a brief pause
+        }
+        break;
+    }
+    case PaceStrategy::Spin:
+        // Pure spin: never yields the core. Marginally more accurate than
+        // TimerSpin and costs 100% CPU — included so the benchmark can price
+        // that trade explicitly.
+        while (pacer_now_ns() < d.deadline_ns) {
+        }
+        break;
     }
     return stats;
 }

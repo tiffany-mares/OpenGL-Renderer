@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cstdio>
 #include <initializer_list>
+#include <string_view>
 
 #include "pacer.h"
 
@@ -85,9 +86,22 @@ static void schedule_suite() {
     expect(d.deadline_ns == 2200 && !d.missed, "schedule resumes one period after late reanchor");
 }
 
+static void pace_strategy_suite() {
+    std::fprintf(stderr, "-- pace strategy parsing\n");
+    PaceStrategy s = PaceStrategy::SleepFor;
+    expect(parse_pace_strategy("sleep", s) && s == PaceStrategy::SleepFor, "parse sleep");
+    expect(parse_pace_strategy("timer", s) && s == PaceStrategy::Timer, "parse timer");
+    expect(parse_pace_strategy("timer_spin", s) && s == PaceStrategy::TimerSpin, "parse timer_spin");
+    expect(parse_pace_strategy("spin", s) && s == PaceStrategy::Spin, "parse spin");
+    const PaceStrategy before = s;
+    expect(!parse_pace_strategy("bogus", s) && s == before, "reject unknown, out untouched");
+    expect(!parse_pace_strategy("", s), "reject empty");
+}
+
 int main() {
     welford_suite();
     schedule_suite();
+    pace_strategy_suite();
     if (g_failures) {
         std::fprintf(stderr, "%d failure(s)\n", g_failures);
         return 1;

@@ -1,6 +1,7 @@
 #pragma once
 #include <cmath>
 #include <cstdint>
+#include <string_view>
 
 // Phase 5: the frame pacer. The pure logic (margin estimator, absolute-
 // deadline schedule) lives in this header where unit tests can reach it
@@ -79,6 +80,31 @@ struct WaitStats {
     bool missed;                  // deadline had already passed: no sleep, no spin
 };
 
+// Phase 6b: the pacing-strategy matrix. TimerSpin is the shipping default;
+// the others exist to be priced against it in the benchmark.
+enum class PaceStrategy {
+    SleepFor,   // naive relative sleep_for to the deadline — scheduler-tick quantized
+    Timer,      // high-res absolute timer to the deadline, no spin
+    TimerSpin,  // sleep short by the Welford margin, spin the rest (default)
+    Spin,       // never sleep: most accurate, costs a whole core
+};
+
+// Flag-string parser for --pace. On failure returns false and leaves `out`
+// untouched.
+inline bool parse_pace_strategy(std::string_view name, PaceStrategy& out) {
+    if (name == "sleep") { out = PaceStrategy::SleepFor; return true; }
+    if (name == "timer") { out = PaceStrategy::Timer; return true; }
+    if (name == "timer_spin") { out = PaceStrategy::TimerSpin; return true; }
+    if (name == "spin") { out = PaceStrategy::Spin; return true; }
+    return false;
+}
+
+// CPU time consumed by the CALLING thread (kernel + user), for the
+// benchmark's honesty column: it prices what each strategy pays for
+// accuracy. GetThreadTimes on Windows; CLOCK_THREAD_CPUTIME_ID elsewhere.
+// Defined in pacer.cpp.
+uint64_t thread_cpu_now_ns();
+
 // Monotonic clock in nanoseconds; per-platform, defined in pacer.cpp. The
 // same timeline the platform sleep targets, so absolute sleeps need no
 // cross-clock conversion. Phase 6 timestamps come from here too.
@@ -89,7 +115,8 @@ uint64_t pacer_now_ns();
 // that calls wait() (on Windows it owns a waitable-timer handle).
 class FramePacer {
 public:
-    explicit FramePacer(uint64_t period_ns);
+    explicit FramePacer(uint64_t period_ns,
+                        PaceStrategy strategy = PaceStrategy::TimerSpin);
     ~FramePacer();
     FramePacer(const FramePacer&) = delete;
     FramePacer& operator=(const FramePacer&) = delete;
@@ -108,4 +135,5 @@ private:
     WelfordEstimator overshoot_;
     void* os_timer_ = nullptr;  // Windows HANDLE; void* keeps windows.h out of this header
     bool legacy_period_raised_ = false;  // Windows pre-1803 fallback engaged
+    PaceStrategy strategy_;
 };
