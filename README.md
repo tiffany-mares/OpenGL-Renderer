@@ -8,7 +8,7 @@ pacing on general-purpose OSes. The rotating cube is the demo, not the point.
 
     cmake -B build
     cmake --build build --config Release
-    build/Release/cube.exe [--input=mutex|bitmask|seqlock] [--fps N]   # build/cube on Linux
+    build/Release/cube.exe [--input=mutex|bitmask|seqlock] [--fps N] [--log PATH]   # build/cube on Linux
     ctest --test-dir build -C Release --output-on-failure
 
 Arrow keys rotate the cube, SPACE pauses the spin, ESC exits.
@@ -69,3 +69,25 @@ into a bounded busy-wait. The margin is not a constant — a value tuned on
 one machine is wrong on another — so it is estimated online from the
 measured overshoot of every sleep (Welford's mean and variance,
 margin = mean + 3σ, clamped to half the period).
+
+## Instrumentation (`--log PATH`, requires `--fps`)
+
+Each paced run can write one CSV of per-frame records:
+
+    frame,frame_start_ns,frame_end_ns,frame_time_ns,sleep_requested_ns,sleep_actual_ns,input_latency_ns,missed
+
+- `frame_time_ns` is **deadline to deadline** — the frame cadence the pacer
+  actually delivered, not how long the work took. Frame 0 logs 0.
+- `input_latency_ns` is consume time minus the payload's `publish_ns`, both
+  on the same monotonic clock. The bitmask backend logs 0 here: 32 bits
+  cannot carry a timestamp, which is precisely why it was never the final
+  answer among the input backends.
+- The log buffer is preallocated before the first frame and the file is
+  written once, on exit. No file IO — and no reallocation — ever happens
+  inside a frame being timed; if the buffer fills, records are dropped and
+  counted instead.
+- Instrumented frames run a fixed synthetic CPU workload so the numbers
+  characterize the pacer, not GPU or driver variance.
+
+All timestamps come from `pacer_now_ns()` — one timeline for deadlines,
+sleeps, publishes, and consumes.
