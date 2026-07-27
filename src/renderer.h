@@ -1,5 +1,6 @@
 #pragma once
 #include <atomic>
+#include <cstdint>
 
 struct GLFWwindow;
 class InputChannel;
@@ -10,7 +11,8 @@ class FramebufferSize;
 // shaders/buffers, draws until `stop` is set, then deletes all GL objects
 // and detaches the context before returning (shutdown ordering requires
 // GL teardown to happen on this thread, before the join).
+// fps_cap > 0 paces the loop with FramePacer; 0 leaves it uncapped.
 // On init failure: sets `failed`, requests window close, returns early.
 void render_thread_main(GLFWwindow* window, const InputChannel& input,
-                        const FramebufferSize& fb,
+                        const FramebufferSize& fb, uint32_t fps_cap,
                         const std::atomic<bool>& stop, std::atomic<bool>& failed);

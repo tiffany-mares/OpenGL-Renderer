@@ -1,5 +1,6 @@
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -18,12 +19,23 @@ static void glfw_error_callback(int code, const char* desc) {
 
 int main(int argc, char** argv) {
     const char* backend = "mutex";  // the baseline is the default
+    uint32_t fps = 0;               // 0 = uncapped (pre-Phase-5 behavior)
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg = argv[i];
         if (arg.rfind("--input=", 0) == 0) {
             backend = argv[i] + 8;
+        } else if (arg.rfind("--fps=", 0) == 0 || (arg == "--fps" && i + 1 < argc)) {
+            const char* v = (arg == "--fps") ? argv[++i] : argv[i] + 6;
+            char* end = nullptr;
+            const unsigned long parsed = std::strtoul(v, &end, 10);
+            if (end == v || *end != '\0' || parsed == 0 || parsed > 1000) {
+                std::fprintf(stderr, "bad --fps value '%s' (want 1..1000)\n", v);
+                return EXIT_FAILURE;
+            }
+            fps = static_cast<uint32_t>(parsed);
         } else {
-            std::fprintf(stderr, "usage: cube [--input=mutex|bitmask|seqlock]\n");
+            std::fprintf(stderr,
+                         "usage: cube [--input=mutex|bitmask|seqlock] [--fps N]\n");
             return EXIT_FAILURE;
         }
     }
@@ -33,6 +45,7 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
     std::printf("input backend: %s\n", input->name());
+    if (fps > 0) std::printf("fps cap: %u\n", fps);
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) {
@@ -67,7 +80,8 @@ int main(int argc, char** argv) {
     std::atomic<bool> stop{false};
     std::atomic<bool> render_failed{false};
     std::thread render_thread(render_thread_main, window, std::cref(*input),
-                              std::cref(fb), std::cref(stop), std::ref(render_failed));
+                              std::cref(fb), fps, std::cref(stop),
+                              std::ref(render_failed));
 
     double mx_prev = 0.0, my_prev = 0.0;
     glfwGetCursorPos(window, &mx_prev, &my_prev);

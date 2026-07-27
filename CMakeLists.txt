@@ -20,9 +20,12 @@ FetchContent_MakeAvailable(glfw)
 
 find_package(Threads REQUIRED)
 
-add_executable(cube src/main.cpp src/renderer.cpp)
+add_executable(cube src/main.cpp src/renderer.cpp src/pacer.cpp)
 target_include_directories(cube PRIVATE ${CMAKE_SOURCE_DIR}/extern ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cube PRIVATE glfw Threads::Threads)
+if(WIN32)
+  target_link_libraries(cube PRIVATE winmm)
+endif()
 
 enable_testing()
 add_executable(mat4_tests tests/mat4_test.cpp)

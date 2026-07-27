@@ -1,6 +1,8 @@
 #include "renderer.h"
 
 #include <cstdio>
+#include <cstdint>
+#include <memory>
 
 #define GLAD_GL_IMPLEMENTATION
 #include <glad/gl.h>
@@ -9,6 +11,7 @@
 
 #include "input_state.h"
 #include "mat4.h"
+#include "pacer.h"
 
 // Transform comes from the CPU now (src/mat4.h). Colors stay `flat`: the
 // provoking (last) vertex of each triangle colors the whole face — see the
@@ -105,7 +108,7 @@ static const unsigned int kIndices[] = {
 };
 
 void render_thread_main(GLFWwindow* window, const InputChannel& input,
-                        const FramebufferSize& fb,
+                        const FramebufferSize& fb, uint32_t fps_cap,
                         const std::atomic<bool>& stop, std::atomic<bool>& failed) {
     glfwMakeContextCurrent(window);
     glfwSwapInterval(0);  // must run on the context-owning thread
@@ -153,8 +156,16 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
     double angle = 0.0, yaw = 0.0, pitch = 0.0;
     double prev = glfwGetTime();
 
-    // Uncapped loop: swap interval is 0 and the pacer doesn't exist until
-    // Phase 5, so this spins as fast as the driver allows.
+    // Phase 5: the pacer owns the frame clock — vsync stays off
+    // (glfwSwapInterval(0) above). fps_cap == 0 keeps the uncapped loop.
+    // The pacer is constructed on this thread: on Windows it owns a
+    // waitable-timer handle, and wait() must run where the frames run.
+    std::unique_ptr<FramePacer> pacer;
+    if (fps_cap > 0)
+        pacer = std::make_unique<FramePacer>(1'000'000'000ull / fps_cap);
+    uint64_t frames = 0;
+    const double t_start = glfwGetTime();
+
     while (!stop.load(std::memory_order_relaxed)) {
         InputSnapshot in = input.read();
         int fb_w = 0, fb_h = 0;
@@ -185,6 +196,18 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
         glfwSwapBuffers(window);  // safe: this thread holds the context
+
+        ++frames;
+        if (pacer) pacer->wait();
+    }
+
+    // Evidence the cap holds; Phase 6 replaces this one-liner with the CSV.
+    if (pacer) {
+        const double elapsed = glfwGetTime() - t_start;
+        std::printf("frames: %llu  avg fps: %.2f  missed deadlines: %llu\n",
+                    static_cast<unsigned long long>(frames),
+                    elapsed > 0.0 ? static_cast<double>(frames) / elapsed : 0.0,
+                    static_cast<unsigned long long>(pacer->missed()));
     }
 
     // GL teardown on the owning thread, before the main thread joins us.
