@@ -74,6 +74,15 @@ static void schedule_suite() {
     d = s.advance(1455);
     expect(d.deadline_ns == 1550 && !d.missed, "post-miss deadline = reanchor + period");
     expect(s.missed() == 1, "no extra misses after resync");
+
+    // A frame that is many periods late still counts as ONE miss and resyncs
+    // once from now — no burst of make-up deadlines for the accumulated debt.
+    d = s.advance(2100);  // next was 1650; we are 4+ periods past it
+    expect(d.missed, "multi-period-late frame flagged as one miss");
+    expect(d.deadline_ns == 2100, "multi-period-late frame starts immediately");
+    expect(s.missed() == 2, "multi-period lateness counts a single miss");
+    d = s.advance(2105);
+    expect(d.deadline_ns == 2200 && !d.missed, "schedule resumes one period after late reanchor");
 }
 
 int main() {

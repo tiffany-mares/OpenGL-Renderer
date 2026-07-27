@@ -28,11 +28,11 @@ int main(int argc, char** argv) {
             const char* v = (arg == "--fps") ? argv[++i] : argv[i] + 6;
             char* end = nullptr;
             const unsigned long parsed = std::strtoul(v, &end, 10);
-            if (end == v || *end != '\0' || parsed == 0 || parsed > 1000) {
-                std::fprintf(stderr, "bad --fps value '%s' (want 1..1000)\n", v);
+            if (end == v || *end != '\0' || parsed > 1000) {
+                std::fprintf(stderr, "bad --fps value '%s' (want 0..1000; 0 = uncapped)\n", v);
                 return EXIT_FAILURE;
             }
-            fps = static_cast<uint32_t>(parsed);
+            fps = static_cast<uint32_t>(parsed);  // 0 = explicit uncapped
         } else {
             std::fprintf(stderr,
                          "usage: cube [--input=mutex|bitmask|seqlock] [--fps N]\n");
