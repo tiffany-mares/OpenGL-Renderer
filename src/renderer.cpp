@@ -9,9 +9,11 @@
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
+#include "frame_log.h"
 #include "input_state.h"
 #include "mat4.h"
 #include "pacer.h"
+#include "workload.h"
 
 // Transform comes from the CPU now (src/mat4.h). Colors stay `flat`: the
 // provoking (last) vertex of each triangle colors the whole face — see the
@@ -107,8 +109,15 @@ static const unsigned int kIndices[] = {
     6, 2, 3,   7, 6, 3,  // +Y top    (provoking vertex 3)
 };
 
+// Fixed per-frame CPU cost for instrumented runs (~100 µs): the CSV then
+// measures the pacer against a constant workload, not GPU/driver variance.
+// The volatile sink is what stops the optimizer deleting the call.
+static constexpr uint64_t kWorkloadIters = 100'000;
+static volatile uint64_t g_workload_sink = 0;
+
 void render_thread_main(GLFWwindow* window, const InputChannel& input,
                         const FramebufferSize& fb, uint32_t fps_cap,
+                        const char* log_path,
                         const std::atomic<bool>& stop, std::atomic<bool>& failed) {
     glfwMakeContextCurrent(window);
     glfwSwapInterval(0);  // must run on the context-owning thread
@@ -166,8 +175,28 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
     uint64_t frames = 0;
     const double t_start = glfwGetTime();
 
+    // Phase 6a instrumentation. The log buffer is preallocated here, before
+    // the first frame — append never allocates, and the CSV write happens
+    // after the loop. Ten minutes of frames is plenty; past that we drop
+    // and count rather than reallocate mid-run.
+    const bool logging = (log_path != nullptr) && pacer;
+    FrameLog log(logging ? static_cast<size_t>(fps_cap) * 600 : 0);
+    uint64_t prev_deadline_ns = 0;
+
     while (!stop.load(std::memory_order_relaxed)) {
+        const uint64_t frame_start_ns = logging ? pacer_now_ns() : 0;
+
         InputSnapshot in = input.read();
+        uint64_t input_latency_ns = 0;
+        if (logging) {
+            // Consume-minus-publish on the shared pacer_now_ns timeline.
+            // publish_ns == 0 means the backend cannot carry it (bitmask) —
+            // logged as 0, which is the honest answer.
+            const uint64_t consume_ns = pacer_now_ns();
+            if (in.publish_ns != 0 && consume_ns > in.publish_ns)
+                input_latency_ns = consume_ns - in.publish_ns;
+        }
+
         int fb_w = 0, fb_h = 0;
         fb.load(fb_w, fb_h);
 
@@ -195,10 +224,30 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
         glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, mvp.m);  // column-major: no transpose
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
+
+        if (logging) g_workload_sink = synthetic_workload(kWorkloadIters);
+
         glfwSwapBuffers(window);  // safe: this thread holds the context
 
+        if (pacer) {
+            const WaitStats ws = pacer->wait();
+            if (logging) {
+                FrameRecord r{};
+                r.frame = frames;
+                r.frame_start_ns = frame_start_ns;
+                r.frame_end_ns = pacer_now_ns();
+                // Deadline to deadline — the frame cadence, not the work
+                // duration. Frame 0 has no previous deadline: logged as 0.
+                r.frame_time_ns = prev_deadline_ns ? ws.deadline_ns - prev_deadline_ns : 0;
+                r.sleep_requested_ns = ws.sleep_requested_ns;
+                r.sleep_actual_ns = ws.sleep_actual_ns;
+                r.input_latency_ns = input_latency_ns;
+                r.missed = ws.missed ? 1 : 0;
+                log.append(r);
+                prev_deadline_ns = ws.deadline_ns;
+            }
+        }
         ++frames;
-        if (pacer) pacer->wait();
     }
 
     // Evidence the cap holds; Phase 6 replaces this one-liner with the CSV.
@@ -208,6 +257,12 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
                     static_cast<unsigned long long>(frames),
                     elapsed > 0.0 ? static_cast<double>(frames) / elapsed : 0.0,
                     static_cast<unsigned long long>(pacer->missed()));
+        if (logging) {
+            if (log.write_csv(log_path))
+                std::printf("frame log: %zu records -> %s (%llu dropped)\n",
+                            log.size(), log_path,
+                            static_cast<unsigned long long>(log.dropped()));
+        }
     }
 
     // GL teardown on the owning thread, before the main thread joins us.

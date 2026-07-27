@@ -11,6 +11,7 @@
 #include <GLFW/glfw3.h>
 
 #include "input_state.h"
+#include "pacer.h"
 #include "renderer.h"
 
 static void glfw_error_callback(int code, const char* desc) {
@@ -20,6 +21,7 @@ static void glfw_error_callback(int code, const char* desc) {
 int main(int argc, char** argv) {
     const char* backend = "mutex";  // the baseline is the default
     uint32_t fps = 0;               // 0 = uncapped (pre-Phase-5 behavior)
+    const char* log_path = nullptr;  // Phase 6a: per-run CSV (requires a paced run)
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg = argv[i];
         if (arg.rfind("--input=", 0) == 0) {
@@ -33,11 +35,21 @@ int main(int argc, char** argv) {
                 return EXIT_FAILURE;
             }
             fps = static_cast<uint32_t>(parsed);  // 0 = explicit uncapped
+        } else if (arg.rfind("--log=", 0) == 0 || (arg == "--log" && i + 1 < argc)) {
+            log_path = (arg == "--log") ? argv[++i] : argv[i] + 6;
+            if (*log_path == '\0') {
+                std::fprintf(stderr, "bad --log value: empty path\n");
+                return EXIT_FAILURE;
+            }
         } else {
             std::fprintf(stderr,
-                         "usage: cube [--input=mutex|bitmask|seqlock] [--fps N]\n");
+                         "usage: cube [--input=mutex|bitmask|seqlock] [--fps N] [--log PATH]\n");
             return EXIT_FAILURE;
         }
+    }
+    if (log_path && fps == 0) {
+        std::fprintf(stderr, "--log requires --fps: frame_time_ns is deadline-to-deadline\n");
+        return EXIT_FAILURE;
     }
     std::unique_ptr<InputChannel> input = make_input_channel(backend);
     if (!input) {
@@ -46,6 +58,7 @@ int main(int argc, char** argv) {
     }
     std::printf("input backend: %s\n", input->name());
     if (fps > 0) std::printf("fps cap: %u\n", fps);
+    if (log_path) std::printf("frame log: %s\n", log_path);
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) {
@@ -80,7 +93,7 @@ int main(int argc, char** argv) {
     std::atomic<bool> stop{false};
     std::atomic<bool> render_failed{false};
     std::thread render_thread(render_thread_main, window, std::cref(*input),
-                              std::cref(fb), fps, std::cref(stop),
+                              std::cref(fb), fps, log_path, std::cref(stop),
                               std::ref(render_failed));
 
     double mx_prev = 0.0, my_prev = 0.0;
@@ -111,10 +124,9 @@ int main(int argc, char** argv) {
         mx_prev = mx;
         my_prev = my;
 
-        s.publish_ns = static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now().time_since_epoch())
-                .count());
+        // Same monotonic timeline as the render thread's consume timestamp —
+        // input_latency_ns is publish-to-consume on ONE clock, or it is noise.
+        s.publish_ns = pacer_now_ns();
         input->publish(s);
 
         // ~1000 Hz poll cadence. sleep_for's real resolution on stock

@@ -12,7 +12,10 @@ class FramebufferSize;
 // and detaches the context before returning (shutdown ordering requires
 // GL teardown to happen on this thread, before the join).
 // fps_cap > 0 paces the loop with FramePacer; 0 leaves it uncapped.
+// log_path != nullptr records per-frame timing to a preallocated buffer and
+// writes it as CSV on exit (callers guarantee log_path implies fps_cap > 0).
 // On init failure: sets `failed`, requests window close, returns early.
 void render_thread_main(GLFWwindow* window, const InputChannel& input,
                         const FramebufferSize& fb, uint32_t fps_cap,
+                        const char* log_path,
                         const std::atomic<bool>& stop, std::atomic<bool>& failed);
