@@ -4,3 +4,4 @@ out/
 .vscode/
 .cache/
 CMakeUserPresets.json
+bench/results/raw/
