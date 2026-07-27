@@ -14,7 +14,7 @@ A C++20 threaded OpenGL renderer whose real subject is three systems problems: t
 cmake -B build
 cmake --build build --config Release
 build/Release/cube.exe [--input=mutex|bitmask|seqlock] [--fps N] [--log PATH]   # (Windows; build/cube on Linux)
-ctest --test-dir build -C Release --output-on-failure   # mat4 unit tests
+ctest --test-dir build -C Release --output-on-failure   # all unit + smoke tests
 ```
 
 On this machine `cmake` is at `C:\Program Files\CMake\bin\cmake.exe` (may not be in older shells' PATH); the generator is Visual Studio 16 2019 (MSVC 19.29).

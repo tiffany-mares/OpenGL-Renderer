@@ -24,7 +24,7 @@ struct InputSnapshot {
     uint32_t keys = 0;        // bitmask of kKey* bits
     float mouse_dx = 0.f;     // cursor delta since previous publish, pixels
     float mouse_dy = 0.f;
-    uint64_t publish_ns = 0;  // steady_clock at publish
+    uint64_t publish_ns = 0;  // pacer_now_ns() at publish — same timeline the consumer reads
 };
 
 // Single-producer (main thread) / single-consumer (render thread) handoff.
