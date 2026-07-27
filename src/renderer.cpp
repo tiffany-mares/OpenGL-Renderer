@@ -116,8 +116,7 @@ static constexpr uint64_t kWorkloadIters = 100'000;
 static volatile uint64_t g_workload_sink = 0;
 
 void render_thread_main(GLFWwindow* window, const InputChannel& input,
-                        const FramebufferSize& fb, uint32_t fps_cap,
-                        const char* log_path,
+                        const FramebufferSize& fb, RenderConfig cfg,
                         const std::atomic<bool>& stop, std::atomic<bool>& failed) {
     glfwMakeContextCurrent(window);
     glfwSwapInterval(0);  // must run on the context-owning thread
@@ -170,18 +169,31 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
     // The pacer is constructed on this thread: on Windows it owns a
     // waitable-timer handle, and wait() must run where the frames run.
     std::unique_ptr<FramePacer> pacer;
-    if (fps_cap > 0)
-        pacer = std::make_unique<FramePacer>(1'000'000'000ull / fps_cap);
+    if (cfg.fps_cap > 0)
+        pacer = std::make_unique<FramePacer>(1'000'000'000ull / cfg.fps_cap, cfg.pace);
     uint64_t frames = 0;
     const double t_start = glfwGetTime();
 
-    // Phase 6a instrumentation. The log buffer is preallocated here, before
-    // the first frame — append never allocates, and the CSV write happens
-    // after the loop. Ten minutes of frames is plenty; past that we drop
-    // and count rather than reallocate mid-run.
-    const bool logging = (log_path != nullptr) && pacer;
-    FrameLog log(logging ? static_cast<size_t>(fps_cap) * 600 : 0);
+    // Phase 6a instrumentation; 6b legalizes uncapped logging (frame_time_ns
+    // then degrades to frame-start-to-frame-start — there are no deadlines).
+    // Buffer preallocated before the first frame; append never allocates;
+    // CSV written after the loop. Bench runs size the buffer exactly;
+    // interactive paced runs get ten minutes of frames, then drop-and-count.
+    const bool logging = cfg.log_path != nullptr;
+    const size_t log_capacity =
+        logging ? (cfg.bench_frames ? static_cast<size_t>(cfg.bench_frames)
+                                    : static_cast<size_t>(cfg.fps_cap) * 600)
+                : 0;
+    FrameLog log(log_capacity);
     uint64_t prev_deadline_ns = 0;
+    uint64_t prev_frame_start_ns = 0;
+
+    // Phase 6b bench mode: run exactly cfg.bench_frames frames, snapshot this
+    // thread's CPU time at the warmup boundary, then request close. CPU% is
+    // the honesty column: it prices what each pacing strategy pays for its
+    // accuracy.
+    constexpr uint64_t kBenchWarmup = 500;
+    uint64_t bench_cpu0 = 0, bench_wall0 = 0;
 
     while (!stop.load(std::memory_order_relaxed)) {
         const uint64_t frame_start_ns = logging ? pacer_now_ns() : 0;
@@ -229,40 +241,70 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
 
         glfwSwapBuffers(window);  // safe: this thread holds the context
 
-        if (pacer) {
-            const WaitStats ws = pacer->wait();
-            if (logging) {
-                FrameRecord r{};
-                r.frame = frames;
-                r.frame_start_ns = frame_start_ns;
-                r.frame_end_ns = pacer_now_ns();
-                // Deadline to deadline — the frame cadence, not the work
-                // duration. Frame 0 has no previous deadline: logged as 0.
-                r.frame_time_ns = prev_deadline_ns ? ws.deadline_ns - prev_deadline_ns : 0;
-                r.sleep_requested_ns = ws.sleep_requested_ns;
-                r.sleep_actual_ns = ws.sleep_actual_ns;
-                r.input_latency_ns = input_latency_ns;
-                r.missed = ws.missed ? 1 : 0;
-                log.append(r);
-                prev_deadline_ns = ws.deadline_ns;
-            }
+        WaitStats ws{};
+        if (pacer) ws = pacer->wait();
+        if (logging) {
+            FrameRecord r{};
+            r.frame = frames;
+            r.frame_start_ns = frame_start_ns;
+            r.frame_end_ns = pacer_now_ns();
+            // Paced: deadline to deadline — the cadence the pacer delivered.
+            // Uncapped: frame-start to frame-start — no deadlines exist.
+            // Frame 0 has no previous value either way: logged as 0.
+            r.frame_time_ns =
+                pacer ? (prev_deadline_ns ? ws.deadline_ns - prev_deadline_ns : 0)
+                      : (prev_frame_start_ns ? frame_start_ns - prev_frame_start_ns : 0);
+            r.sleep_requested_ns = ws.sleep_requested_ns;
+            r.sleep_actual_ns = ws.sleep_actual_ns;
+            r.input_latency_ns = input_latency_ns;
+            r.missed = ws.missed ? 1 : 0;
+            log.append(r);
+            prev_deadline_ns = ws.deadline_ns;
+            prev_frame_start_ns = frame_start_ns;
         }
         ++frames;
+
+        if (cfg.bench_frames) {
+            if (frames == kBenchWarmup) {
+                bench_cpu0 = thread_cpu_now_ns();
+                bench_wall0 = pacer_now_ns();
+            }
+            if (frames >= cfg.bench_frames) {
+                glfwSetWindowShouldClose(window, GLFW_TRUE);  // documented any-thread
+                break;
+            }
+        }
     }
 
-    // Evidence the cap holds; Phase 6 replaces this one-liner with the CSV.
+    // Bench snapshot immediately at loop exit — before the CSV write, so the
+    // measured CPU window contains only frames.
+    if (cfg.bench_frames && frames > kBenchWarmup) {
+        const uint64_t cpu1 = thread_cpu_now_ns();
+        const uint64_t wall1 = pacer_now_ns();
+        const uint64_t cpu = cpu1 - bench_cpu0;
+        const uint64_t wall = wall1 - bench_wall0;
+        std::printf("bench: frames=%llu warmup=%llu measured=%llu cpu_ns=%llu wall_ns=%llu cpu_pct=%.2f\n",
+                    static_cast<unsigned long long>(frames),
+                    static_cast<unsigned long long>(kBenchWarmup),
+                    static_cast<unsigned long long>(frames - kBenchWarmup),
+                    static_cast<unsigned long long>(cpu),
+                    static_cast<unsigned long long>(wall),
+                    wall > 0 ? 100.0 * static_cast<double>(cpu) / static_cast<double>(wall) : 0.0);
+    }
+
+    // Evidence the cap holds; the CSV carries the real story.
     if (pacer) {
         const double elapsed = glfwGetTime() - t_start;
         std::printf("frames: %llu  avg fps: %.2f  missed deadlines: %llu\n",
                     static_cast<unsigned long long>(frames),
                     elapsed > 0.0 ? static_cast<double>(frames) / elapsed : 0.0,
                     static_cast<unsigned long long>(pacer->missed()));
-        if (logging) {
-            if (log.write_csv(log_path))
-                std::printf("frame log: %zu records -> %s (%llu dropped)\n",
-                            log.size(), log_path,
-                            static_cast<unsigned long long>(log.dropped()));
-        }
+    }
+    if (logging) {
+        if (log.write_csv(cfg.log_path))
+            std::printf("frame log: %zu records -> %s (%llu dropped)\n",
+                        log.size(), cfg.log_path,
+                        static_cast<unsigned long long>(log.dropped()));
     }
 
     // GL teardown on the owning thread, before the main thread joins us.

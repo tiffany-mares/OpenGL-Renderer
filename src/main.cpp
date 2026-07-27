@@ -22,6 +22,9 @@ int main(int argc, char** argv) {
     const char* backend = "mutex";  // the baseline is the default
     uint32_t fps = 0;               // 0 = uncapped (pre-Phase-5 behavior)
     const char* log_path = nullptr;  // Phase 6a: per-run CSV (requires a paced run)
+    PaceStrategy pace = PaceStrategy::TimerSpin;  // the shipping default
+    bool pace_given = false;
+    uint64_t bench_frames = 0;  // 0 = interactive run
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg = argv[i];
         if (arg.rfind("--input=", 0) == 0) {
@@ -41,14 +44,39 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr, "bad --log value: empty path\n");
                 return EXIT_FAILURE;
             }
+        } else if (arg.rfind("--pace=", 0) == 0 || (arg == "--pace" && i + 1 < argc)) {
+            const char* v = (arg == "--pace") ? argv[++i] : argv[i] + 7;
+            if (!parse_pace_strategy(v, pace)) {
+                std::fprintf(stderr, "bad --pace value '%s' (sleep|timer|timer_spin|spin)\n", v);
+                return EXIT_FAILURE;
+            }
+            pace_given = true;
+        } else if (arg.rfind("--bench-frames=", 0) == 0 ||
+                   (arg == "--bench-frames" && i + 1 < argc)) {
+            const char* v = (arg == "--bench-frames") ? argv[++i] : argv[i] + 15;
+            char* end = nullptr;
+            const unsigned long long parsed = std::strtoull(v, &end, 10);
+            if (end == v || *end != '\0' || parsed <= 500) {
+                std::fprintf(stderr,
+                             "bad --bench-frames value '%s' (must exceed the 500-frame warmup)\n", v);
+                return EXIT_FAILURE;
+            }
+            bench_frames = parsed;
         } else {
             std::fprintf(stderr,
-                         "usage: cube [--input=mutex|bitmask|seqlock] [--fps N] [--log PATH]\n");
+                         "usage: cube [--input=mutex|bitmask|seqlock] [--fps N] "
+                         "[--pace sleep|timer|timer_spin|spin] [--log PATH] [--bench-frames N]\n");
             return EXIT_FAILURE;
         }
     }
-    if (log_path && fps == 0) {
-        std::fprintf(stderr, "--log requires --fps: frame_time_ns is deadline-to-deadline\n");
+    if (log_path && fps == 0 && bench_frames == 0) {
+        std::fprintf(stderr,
+                     "--log requires --fps or --bench-frames (uncapped interactive runs have "
+                     "no frame clock to log against)\n");
+        return EXIT_FAILURE;
+    }
+    if (pace_given && fps == 0) {
+        std::fprintf(stderr, "--pace requires --fps (there is nothing to pace uncapped)\n");
         return EXIT_FAILURE;
     }
     std::unique_ptr<InputChannel> input = make_input_channel(backend);
@@ -59,6 +87,15 @@ int main(int argc, char** argv) {
     std::printf("input backend: %s\n", input->name());
     if (fps > 0) std::printf("fps cap: %u\n", fps);
     if (log_path) std::printf("frame log: %s\n", log_path);
+    if (fps > 0) {
+        const char* pace_name = pace == PaceStrategy::SleepFor ? "sleep"
+                                : pace == PaceStrategy::Timer  ? "timer"
+                                : pace == PaceStrategy::Spin   ? "spin"
+                                                               : "timer_spin";
+        std::printf("pace strategy: %s\n", pace_name);
+    }
+    if (bench_frames > 0)
+        std::printf("bench frames: %llu\n", static_cast<unsigned long long>(bench_frames));
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) {
@@ -92,8 +129,15 @@ int main(int argc, char** argv) {
 
     std::atomic<bool> stop{false};
     std::atomic<bool> render_failed{false};
+
+    RenderConfig cfg;
+    cfg.fps_cap = fps;
+    cfg.pace = pace;
+    cfg.log_path = log_path;
+    cfg.bench_frames = bench_frames;
+
     std::thread render_thread(render_thread_main, window, std::cref(*input),
-                              std::cref(fb), fps, log_path, std::cref(stop),
+                              std::cref(fb), cfg, std::cref(stop),
                               std::ref(render_failed));
 
     double mx_prev = 0.0, my_prev = 0.0;
