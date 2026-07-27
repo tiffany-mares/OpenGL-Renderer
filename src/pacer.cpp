@@ -144,16 +144,19 @@ uint64_t FramePacer::margin_ns() const {
     return ns < cap ? ns : cap;
 }
 
-void FramePacer::wait() {
+WaitStats FramePacer::wait() {
     const uint64_t now = pacer_now_ns();
     const PaceDecision d = sched_.advance(now);
-    if (d.missed) return;  // already late: start the frame immediately, schedule resynced
+    WaitStats stats{d.deadline_ns, 0, 0, d.missed};
+    if (d.missed) return stats;  // already late: start the frame immediately, schedule resynced
 
     const uint64_t margin = margin_ns();
     const uint64_t sleep_target = d.deadline_ns - margin;
     if (sleep_target > now) {
+        stats.sleep_requested_ns = sleep_target - now;
         sleep_until_ns(sleep_target);
         const uint64_t wake = pacer_now_ns();
+        stats.sleep_actual_ns = wake - now;
         if (wake >= sleep_target)
             overshoot_.add(static_cast<double>(wake - sleep_target));
     }
@@ -166,4 +169,5 @@ void FramePacer::wait() {
     while (pacer_now_ns() < d.deadline_ns) {
         // tight clock re-read; each call is itself a brief pause
     }
+    return stats;
 }

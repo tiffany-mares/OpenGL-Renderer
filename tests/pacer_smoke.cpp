@@ -13,7 +13,11 @@ int main() {
 
     FramePacer pacer(kPeriodNs);
     const uint64_t t0 = pacer_now_ns();
-    for (int i = 0; i < kFrames; ++i) pacer.wait();
+    uint64_t missed_flags = 0;
+    for (int i = 0; i < kFrames; ++i) {
+        const WaitStats ws = pacer.wait();
+        if (ws.missed) ++missed_flags;
+    }
     const uint64_t elapsed = pacer_now_ns() - t0;
 
     const uint64_t expect_ns = kPeriodNs * kFrames;  // 500 ms
@@ -27,6 +31,12 @@ int main() {
     }
     if (elapsed > expect_ns * 2) {
         std::fprintf(stderr, "FAIL: gross oversleep - sleep path broken?\n");
+        return 1;
+    }
+    if (missed_flags != pacer.missed()) {
+        std::fprintf(stderr, "FAIL: per-wait missed flags (%llu) != missed() (%llu)\n",
+                     static_cast<unsigned long long>(missed_flags),
+                     static_cast<unsigned long long>(pacer.missed()));
         return 1;
     }
     std::printf("pacer smoke passed\n");

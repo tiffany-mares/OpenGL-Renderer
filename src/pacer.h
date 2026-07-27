@@ -68,6 +68,17 @@ private:
     uint64_t missed_ = 0;
 };
 
+// What one wait() did — the raw material for the Phase 6 frame log. The
+// renderer computes deadline-to-deadline frame time from consecutive
+// deadline_ns values; sleep_requested vs sleep_actual is the OS overshoot
+// the Welford margin exists to absorb.
+struct WaitStats {
+    uint64_t deadline_ns;         // the frame boundary this wait targeted (resync target on a miss)
+    uint64_t sleep_requested_ns;  // duration handed to the OS sleep (0 = no sleep issued)
+    uint64_t sleep_actual_ns;     // duration the OS sleep actually took (0 = no sleep issued)
+    bool missed;                  // deadline had already passed: no sleep, no spin
+};
+
 // Monotonic clock in nanoseconds; per-platform, defined in pacer.cpp. The
 // same timeline the platform sleep targets, so absolute sleeps need no
 // cross-clock conversion. Phase 6 timestamps come from here too.
@@ -83,9 +94,9 @@ public:
     FramePacer(const FramePacer&) = delete;
     FramePacer& operator=(const FramePacer&) = delete;
 
-    // Blocks until the next frame deadline. Call once per frame, after the
-    // frame's work (right after swap).
-    void wait();
+    // Blocks until the next frame deadline and reports what happened. Call
+    // once per frame, after the frame's work (right after swap).
+    WaitStats wait();
 
     uint64_t missed() const { return sched_.missed(); }
 
