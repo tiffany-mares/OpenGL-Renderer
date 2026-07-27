@@ -47,3 +47,7 @@ if(WIN32)
   target_link_libraries(pacer_smoke PRIVATE winmm)  # timeBeginPeriod fallback
 endif()
 add_test(NAME pacer_smoke COMMAND pacer_smoke)
+
+add_executable(frame_log_tests tests/frame_log_test.cpp)
+target_include_directories(frame_log_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME frame_log_tests COMMAND frame_log_tests)
