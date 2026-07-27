@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cstdio>
+#include <initializer_list>
 
 #include "pacer.h"
 
