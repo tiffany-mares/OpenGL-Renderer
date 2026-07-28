@@ -1,0 +1,143 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design system: single dark "lab writeup" theme. No light mode, no toggle.
+ * All colors in oklch. Tokens registered in @theme inline below.
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-hairline: var(--hairline);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-panel: var(--panel);
+  --color-tint: var(--tint);
+  --color-metric-1: var(--metric-1);
+  --color-metric-2: var(--metric-2);
+  --color-metric-3: var(--metric-3);
+  --color-metric-1-tint: var(--metric-1-tint);
+  --color-metric-2-tint: var(--metric-2-tint);
+  --color-metric-3-tint: var(--metric-3-tint);
+  --color-series-naive: var(--series-naive);
+  --color-series-naive-tint: var(--series-naive-tint);
+  --color-series-tuned: var(--series-tuned);
+  --color-series-target: var(--series-target);
+  --color-series-target-tint: var(--series-target-tint);
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --radius: 0.5rem;
+  --background: oklch(0.17 0.008 260);
+  --foreground: oklch(0.93 0.005 260);
+  --card: oklch(0.2 0.009 260);
+  --card-foreground: oklch(0.93 0.005 260);
+  --popover: oklch(0.2 0.009 260);
+  --popover-foreground: oklch(0.93 0.005 260);
+  --primary: oklch(0.8 0.13 190);
+  --primary-foreground: oklch(0.17 0.008 260);
+  --secondary: oklch(0.26 0.01 260);
+  --secondary-foreground: oklch(0.93 0.005 260);
+  --muted: oklch(0.24 0.009 260);
+  --muted-foreground: oklch(0.65 0.012 260);
+  --accent: oklch(0.26 0.01 260);
+  --accent-foreground: oklch(0.93 0.005 260);
+  --destructive: oklch(0.62 0.19 25);
+  --destructive-foreground: oklch(0.96 0.005 260);
+  --border: oklch(0.3 0.011 260);
+  --hairline: oklch(0.32 0.011 260);
+  --input: oklch(0.3 0.011 260);
+  --ring: oklch(0.8 0.13 190);
+  --panel: oklch(0.205 0.009 260);
+  --tint: oklch(0.225 0.012 250);
+  --metric-1: oklch(0.82 0.13 190);
+  --metric-2: oklch(0.8 0.15 145);
+  --metric-3: oklch(0.82 0.14 80);
+  --metric-1-tint: oklch(0.24 0.035 195);
+  --metric-2-tint: oklch(0.24 0.035 152);
+  --metric-3-tint: oklch(0.245 0.035 85);
+  --series-naive: oklch(0.68 0.17 30);
+  --series-naive-tint: oklch(0.24 0.035 30);
+  --series-tuned: oklch(0.8 0.13 190);
+  --series-target: oklch(0.72 0.16 300);
+  --series-target-tint: oklch(0.24 0.035 300);
+}
+
+:root.light {
+  --background: oklch(0.98 0.004 260);
+  --foreground: oklch(0.24 0.012 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.24 0.012 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.24 0.012 260);
+  --primary: oklch(0.52 0.11 190);
+  --primary-foreground: oklch(0.99 0.003 260);
+  --secondary: oklch(0.94 0.006 260);
+  --secondary-foreground: oklch(0.24 0.012 260);
+  --muted: oklch(0.95 0.005 260);
+  --muted-foreground: oklch(0.48 0.014 260);
+  --accent: oklch(0.94 0.006 260);
+  --accent-foreground: oklch(0.24 0.012 260);
+  --destructive: oklch(0.55 0.19 25);
+  --destructive-foreground: oklch(0.99 0.003 260);
+  --border: oklch(0.88 0.008 260);
+  --hairline: oklch(0.86 0.008 260);
+  --input: oklch(0.88 0.008 260);
+  --ring: oklch(0.52 0.11 190);
+  --panel: oklch(0.99 0.003 260);
+  --tint: oklch(0.955 0.008 250);
+  --metric-1: oklch(0.52 0.11 190);
+  --metric-2: oklch(0.5 0.13 145);
+  --metric-3: oklch(0.55 0.13 70);
+  --metric-1-tint: oklch(0.94 0.03 195);
+  --metric-2-tint: oklch(0.94 0.03 152);
+  --metric-3-tint: oklch(0.945 0.035 85);
+  --series-naive: oklch(0.55 0.18 30);
+  --series-naive-tint: oklch(0.94 0.035 30);
+  --series-tuned: oklch(0.52 0.11 190);
+  --series-target: oklch(0.5 0.17 300);
+  --series-target-tint: oklch(0.94 0.035 300);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@utility hairline-y {
+  border-bottom: 1px solid var(--color-hairline);
+}
