@@ -2,11 +2,11 @@
 """Phase 8 web-build driver.
 
 Compiles the whole app (src/*.cpp) to WebAssembly with Emscripten and stages
-a servable site in --out: cube.js + cube.wasm + index.html. The same three
-translation units as the native build; __EMSCRIPTEN__ guards select the
-single-threaded browser path (no render thread, no pacer in the loop --
-requestAnimationFrame owns the frame clock). Stdlib-only, like every runner
-in bench/.
+a servable site in --out: cube.js + cube.wasm + the page, dashboard, vendored
+Chart.js, and committed benchmark data. The same three translation units as
+the native build; __EMSCRIPTEN__ guards select the single-threaded browser
+path (no render thread, no pacer in the loop -- requestAnimationFrame owns
+the frame clock). Stdlib-only, like every runner in bench/.
 
 Requires an activated emsdk: emcc must be on PATH (run emsdk_env first).
 """
@@ -62,13 +62,29 @@ def main() -> None:
         if not artifact.is_file():
             sys.exit(f"FATAL: emcc exited 0 but {artifact} was not produced")
 
-    page = root / "web" / "index.html"
-    if not page.is_file():
-        sys.exit(f"FATAL: {page} is missing -- the site would deploy without its page")
-    shutil.copyfile(page, out / "index.html")
+    # Phase 8b staging: page, dashboard, vendored Chart.js, committed data.
+    # The two results CSVs stage under stable dashboard names; they stay
+    # committed once under bench/results/, never duplicated in git.
+    stage = [
+        (root / "web" / "index.html", out / "index.html"),
+        (root / "web" / "dashboard.js", out / "dashboard.js"),
+        (root / "web" / "vendor" / "chart.umd.min.js",
+         out / "vendor" / "chart.umd.min.js"),
+        (root / "web" / "data" / "frametime-hist.json",
+         out / "data" / "frametime-hist.json"),
+        (root / "bench" / "results" / "2026-07-27-summary.csv",
+         out / "data" / "pacing-summary.csv"),
+        (root / "bench" / "results" / "2026-07-27-handoff-summary.csv",
+         out / "data" / "handoff-summary.csv"),
+    ]
+    for src, dst in stage:
+        if not src.is_file():
+            sys.exit(f"FATAL: {src} is missing -- the site would deploy incomplete")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
 
     print(f"wasm: js_bytes={js.stat().st_size} wasm_bytes={wasm.stat().st_size} "
-          f"out={out}", flush=True)
+          f"staged={len(stage)} out={out}", flush=True)
 
 
 if __name__ == "__main__":
