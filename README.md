@@ -91,3 +91,40 @@ Each paced run can write one CSV of per-frame records:
 
 All timestamps come from `pacer_now_ns()` — one timeline for deadlines,
 sleeps, publishes, and consumes.
+
+## Benchmarks (`--pace=`, `--bench-frames N`)
+
+The pacing-strategy matrix prices four ways of hitting a frame deadline —
+`--pace=sleep|timer|timer_spin|spin` (default `timer_spin`, requires `--fps`)
+— at 60/144/240 Hz plus an uncapped baseline. To reproduce:
+
+    python bench/run_matrix.py    # ~19 minutes; run on AC power with the machine otherwise idle
+
+Each of the 13 cells runs `cube.exe --bench-frames=10000` (self-terminating
+bench mode; the first 500 frames are warmup and are discarded, n=9500) and the
+runner invokes `bench/summarize.py` (both scripts are stdlib-only Python).
+Raw per-frame CSVs land in `bench/results/raw/<timestamp>/`, which is
+git-ignored; only the summarized results are committed:
+[bench/results/2026-07-27-pacing-matrix.md](bench/results/2026-07-27-pacing-matrix.md)
+(with full provenance and machine notes) and the matching
+`2026-07-27-summary.csv`.
+
+Column definitions: `p50/p95/p99/max/stddev` are computed over each cell's
+per-frame `frame_time_ns` (deadline-to-deadline for paced cells,
+start-to-start for uncapped) after dropping warmup; `missed` is the count of
+frames whose deadline had already passed at wait time (the schedule resyncs,
+never chases); `cpu %` is render-thread CPU time over the measured window
+(warmup boundary → loop exit), read via `QueryThreadCycleTime` calibrated
+against the pacer's QPC clock on Windows and `CLOCK_THREAD_CPUTIME_ID` on
+POSIX, divided by wall time.
+
+Findings, with the CPU column as the price tag: naive `sleep_for` is cheap
+(~3–6% CPU) but cannot hold 144 or 240 Hz on Windows — it missed half of all
+deadlines at both rates. A high-resolution absolute timer alone holds every
+rate at similar cost (~3–9%), but only because the deadline-to-deadline metric
+forgives its wake jitter; that jitter (tens of µs to ms) lands directly in
+frame start times. `timer_spin`, the shipping default, buys clock-read-accurate
+deadlines for a measured margin of spinning (~8–16% CPU, scaling with rate).
+Pure `spin` is marginally better still — zero misses everywhere — and costs an
+entire core (~99%). The default is the middle of that trade, and the margin it
+spins is measured per machine, not assumed.
