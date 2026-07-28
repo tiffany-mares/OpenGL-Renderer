@@ -1,7 +1,7 @@
 # Frame Pacer Lab — wiring the Lovable page to real benchmark data
 
 **Date:** 2026-07-28
-**Status:** Draft — awaiting user review (drafted autonomously while user was away; open decisions listed at the end)
+**Status:** Approved — all open decisions resolved with the user (see Resolved decisions at the end)
 
 ## Problem
 
@@ -22,9 +22,10 @@ Every number and most claims in it are fabricated:
 - The cube caption implies the canvas cube is the project's browser build; it is a decorative
   2D-canvas wireframe local to the page.
 
-Goal of this step: make the page truthful — real data, real platforms, real prose — as a
-self-contained change. Deployment (whether it replaces the live Cloudflare site) is
-deliberately **out of scope** and recorded as an open decision.
+Goal of this step: make the page truthful — real data, real platforms, real prose, and the
+**real wasm cube** embedded in place of the decorative wireframe. The folder is renamed
+`lab/` and committed into this repo. Actually swapping the live Cloudflare deployment over
+to this page is a **later step**; nothing here touches `web/`, `dist/`, or the workflows.
 
 ## Real data sources (all committed in this repo)
 
@@ -63,9 +64,18 @@ covers all four strategies).
 
 ## Design
 
-### 1. Data generator — `Frame Pacer Lab/scripts/gen-lab-data.mjs`
+### 0. Folder rename + repo adoption
 
-- Node ≥18, zero dependencies, run via `npm run gen-data` and wired as `predev`/`prebuild`.
+`Frame Pacer Lab/` → `lab/` (drops the space; one plain `git mv`-equivalent since the folder
+is untracked: rename, then `git add lab/`). The lab keeps its own `.gitignore`
+(`node_modules/`, build output); `cube.js`/`cube.wasm` staged into `lab/public/` are added to
+that ignore list — they are build artifacts, same doctrine as `dist/`.
+
+### 1. Data generator — `lab/scripts/gen-lab-data.mjs`
+
+- Node ≥18, zero dependencies, run via `npm run gen-data` (kept out of `predev`/`prebuild`
+  so the page builds from the committed JSON without the parent repo present; re-run
+  manually after a weekly CI data refresh).
 - Reads, per platform: pacing summary CSV, frametime-hist JSON, provenance (CI JSON files;
   for the desktop, the provenance object embedded in `web/data/frametime-hist.json`).
 - Emits `src/lib/lab-data.gen.json` (committed):
@@ -140,19 +150,37 @@ generated JSON:
 - **`Histogram.tsx`:** consumes the same `Bin[]` shape; axis caption updates
   ("50 µs data · 0.25 ms display bins · n = 9,500 per cell"), x-max 20 ms, overflow note
   under the chart when the selected cells have out-of-range mass. Log y stays.
-- **`Cube.tsx`:** unchanged mechanically; the page caption is rewritten to say it is a
-  decorative canvas wireframe paced by rAF with a live interval readout — explicitly not the
-  project's renderer — and links to the real WebGL2 build at https://opengl-renderer.pages.dev/.
+- **Cube — real wasm embed.** The decorative 2D wireframe `Cube.tsx` is replaced by a
+  client-only component hosting the actual Emscripten build. The integration contract is
+  what `web/index.html` already proves out: a `<canvas id="canvas" tabindex="0">`, a
+  `window.Module = { canvas }` global set before load, and a `cube.js` script tag
+  (which fetches `cube.wasm`). Component behavior:
+  - SSR-guarded (`useEffect` only), with a module-scope boot-once flag — Emscripten
+    modules can't be torn down, so dev hot-reload must not inject the script twice.
+  - Keeps the live page's focus handling: click-to-focus, `preventDefault` on
+    arrows/space while the canvas is focused; keeps the caption listing the controls.
+  - The old overlay's fps / ms-per-frame readout stays (it measures rAF cadence via its
+    own rAF loop — honest for the browser build).
+  - Artifacts staged by `lab/scripts/stage-cube.mjs` (copies `../dist/cube.js` +
+    `../dist/cube.wasm` into `lab/public/`), wired as `predev`/`prebuild`; FATALs with
+    "run `python web/build.py --out dist` first" when `dist/` is missing or stale-empty.
+    The staged files are git-ignored (build artifacts).
+  - The boundary caption stays accurate and gets aligned with the live page's wording:
+    single-threaded, rAF-paced, pacer and threaded render deliberately absent.
 - **`index.tsx`:** platform chips render the three real platforms; hero subtitle and stat
   claims re-anchored to real numbers ("zero missed deadlines out of 9,500 at 144 Hz, and what
-  it costs"); header/footer links keep GitHub (`tiffany-mares/OpenGL-Renderer`), LinkedIn,
-  contact; a link to the live dashboard is added.
+  it costs"); branding becomes `tiffany-mares / opengl-renderer` in the header breadcrumb,
+  footer, `<title>`, and og/twitter meta (headline keeps the frame-deadline hook); the build
+  section clones the real repo; header/footer links keep GitHub
+  (`tiffany-mares/OpenGL-Renderer`), LinkedIn, contact; a link to the live dashboard is added.
 
 ### 4. Error handling
 
 All data-shape risk is pushed into the generator (FATAL at build time). The page imports a
 committed JSON — it has no runtime data-failure mode. TypeScript types on the generated
-import keep the page honest about the schema.
+import keep the page honest about the schema. The cube stage script FATALs when artifacts
+are absent (build); at runtime the cube component shows a small "demo failed to load" note
+if the wasm module errors (e.g. WebGL2 unavailable), never a blank panel.
 
 ### 5. Testing / verification
 
@@ -163,25 +191,27 @@ import keep the page honest about the schema.
   sleep-144 missed = 2852; ubuntu-latest timer_spin rows all-zero missed.
 - `npm run build` (or `bun run build`) passes; dev-server visual pass over all
   3 platforms × 3 rates: tiles, histogram, tables, overflow notes, no NaN/undefined.
+- Cube: build `dist/` once locally (emsdk at `C:\Users\tiffm\emsdk`), run the dev server,
+  verify the wasm cube renders and spins, click-to-focus works, arrows yaw/pitch, SPACE
+  pauses, console is clean, and hot-reload does not double-boot the module.
 - Prose audit: every number in prose traceable to a committed file; no claim about macOS,
   VRR, capture cards, or fullscreen-compositor measurements survives.
 - The C++ project, `web/`, and workflows are untouched — no ctest or CI impact.
 
 ## Out of scope (this step)
 
-- Deployment/integration of the lab page (replace the live site vs companion deploy).
-- Handoff-benchmark section on the lab page (dashboard covers it; link instead).
-- Embedding the real Emscripten cube in the lab page.
-- Renaming the `Frame Pacer Lab/` folder or Lovable sync mechanics.
+- Swapping the live Cloudflare deployment to serve this page (follow-up step; will fold the
+  lab build + cube staging into `pages.yml` and retire `web/index.html`/`dashboard.js`).
+- Handoff-benchmark section on the lab page (dashboard covers it; link instead — revisit at
+  the deployment-swap step since the dashboard retires then).
+- Lovable sync mechanics (Lovable is treated as a one-time design export; future edits are
+  made locally).
 
-## Open decisions for the user
+## Resolved decisions (with the user, 2026-07-28)
 
-1. **Page role:** replace opengl-renderer.pages.dev eventually, or live as a separate
-   portfolio page? (Nothing in this step commits either way.)
-2. **Repo placement:** commit `Frame Pacer Lab/` into this repo (recommended, keeps data +
-   page in one history; note the folder name contains a space), or split it into its own repo
-   for Lovable sync?
-3. **Branding:** the page brands itself `nine / frame-pacer`. Default in this design:
-   `tiffany-mares / frame-pacer-lab`. Confirm or supply preferred handle/name.
-4. **Cube:** keep the decorative canvas cube with an honest caption (default), or embed the
-   real wasm build?
+1. **Page role:** the lab page will eventually replace opengl-renderer.pages.dev; the swap
+   itself is a separate later step.
+2. **Repo placement:** committed into this repo, renamed `lab/`.
+3. **Branding:** `tiffany-mares / opengl-renderer`; headline keeps the frame-deadline hook.
+4. **Cube:** embed the real wasm build in this step, replacing the decorative wireframe
+   (integration surface verified small against `web/index.html`).
