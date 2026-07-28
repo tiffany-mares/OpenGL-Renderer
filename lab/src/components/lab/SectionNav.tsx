@@ -9,6 +9,7 @@ const ITEMS = [
   { id: "metrics", label: "numbers" },
   { id: "histogram", label: "histogram" },
   { id: "results", label: "results" },
+  { id: "handoff", label: "input handoff" },
   { id: "decisions", label: "decisions" },
   { id: "notes", label: "limits & build" },
 ];

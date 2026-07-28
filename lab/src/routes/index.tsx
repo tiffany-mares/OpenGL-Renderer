@@ -1,37 +1,50 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Github, Linkedin, Globe } from "lucide-react";
-import { Cube } from "@/components/lab/Cube";
+import { CubeWasm } from "@/components/lab/CubeWasm";
 import { Histogram } from "@/components/lab/Histogram";
 import { SectionNav } from "@/components/lab/SectionNav";
+import { HandoffCost } from "@/components/lab/HandoffCost";
+import { HandoffSweep } from "@/components/lab/HandoffSweep";
 import {
-  BACKSTORY,
   BASELINE_ROWS,
-  DECISIONS,
-  HOW_IT_WORKS,
-  LIMITATIONS,
+  DESKTOP,
+  PLATFORMS,
   PLATFORM_LABEL,
+  PLATFORM_SUBLABEL,
   RESULT_ROWS,
+  handoffApp,
+  handoffCost,
+  handoffSweep,
   metrics,
+  provenance,
   type Hz,
   type Platform,
   type Row,
 } from "@/lib/lab-data";
+import {
+  BACKSTORY,
+  BUILD_SNIPPET,
+  DECISIONS,
+  HANDOFF,
+  HOW_IT_WORKS,
+  LIMITATIONS,
+} from "@/lib/lab-content";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "frame-pacer — hitting a frame deadline on an unwilling OS" },
+      { title: "tiffany-mares / opengl-renderer — hitting a frame deadline on an unwilling OS" },
       {
         name: "description",
         content:
-          "Measurements and decisions from a frame pacer: p99 jitter, missed deadlines and render-thread CPU across 60, 144 and 240 Hz on three platforms.",
+          "A threaded OpenGL renderer's frame pacer, measured: zero missed deadlines out of 9,500 at 144 Hz where naive sleep misses half — plus the input-handoff numbers that justify a mutex.",
       },
-      { property: "og:title", content: "frame-pacer — hitting a frame deadline on an unwilling OS" },
+      { property: "og:title", content: "tiffany-mares / opengl-renderer — hitting a frame deadline on an unwilling OS" },
       {
         property: "og:description",
         content:
-          "A lab writeup: sub-millisecond p99 frame jitter versus a naive sleep baseline, with the CPU cost stated plainly.",
+          "A lab writeup: real pacing and input-handoff measurements from a threaded OpenGL renderer, with the CPU cost stated plainly.",
       },
       { property: "og:type", content: "article" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -42,8 +55,10 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const [hz, setHz] = useState<Hz>(144);
-  const [platform, setPlatform] = useState<Platform>("win11");
+  const [platform, setPlatform] = useState<Platform>(DESKTOP);
   const m = metrics(hz, platform);
+  const prov = provenance(platform);
+  const appRows = handoffApp(platform);
 
   return (
     <main className="mx-auto max-w-5xl px-6 pb-24 pt-10 sm:px-8">
@@ -51,21 +66,25 @@ function Index() {
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-hairline pb-8">
         <div className="max-w-2xl">
           <p className="font-mono text-xs">
-            <span className="text-metric-1">nine</span>
+            <span className="text-metric-1">tiffany-mares</span>
             <span className="text-muted-foreground">/</span>
-            <span className="text-metric-3">frame-pacer</span>
+            <span className="text-metric-3">opengl-renderer</span>
           </p>
           <h1 className="mt-2 text-balance text-2xl font-medium leading-snug sm:text-3xl">
             Hitting a <Key accent="metric-3">frame deadline</Key> on an <Key accent="series-naive">OS</Key> that doesn&apos;t want you to.
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            A <Key>render-loop pacer</Key> that holds the interval to within a <Key accent="metric-1">third of a millisecond</Key> at <Key accent="metric-1">144 Hz</Key>,
-            and what it costs to do that.
+            A threaded OpenGL renderer&apos;s <Key>frame pacer</Key>, measured: <Key accent="metric-1">zero missed deadlines</Key> out
+            of 9,500 at <Key accent="metric-1">144 Hz</Key> where a <Key accent="series-naive">naive sleep loop</Key> misses half —
+            and what that costs.
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1 font-mono text-xs text-primary">
           <a href="https://github.com/tiffany-mares/OpenGL-Renderer" className="underline underline-offset-4 hover:no-underline">
             github ↗
+          </a>
+          <a href="https://opengl-renderer.pages.dev/" className="underline underline-offset-4 hover:no-underline">
+            live demo ↗
           </a>
           <a href="https://www.linkedin.com/in/tiffany-mares" className="underline underline-offset-4 hover:no-underline">
             linkedin ↗
@@ -80,11 +99,13 @@ function Index() {
 
       {/* Cube */}
       <section id="demo" className="scroll-mt-20 pt-10">
-        <Cube />
+        <CubeWasm />
         <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-          This browser build is <Key>single threaded</Key> and paced by <Key accent="metric-3">requestAnimationFrame</Key>,
-          not by the pacer. There is no <Key accent="metric-1">high-resolution timer</Key>, no <Key accent="metric-1">spin margin</Key> and no control over presentation here,
-          so treat the readout as a liveness check — every number below comes from the <Key accent="metric-2">native build</Key>.
+          The real renderer, compiled to WebAssembly (<Key>WebGL2</Key>). Click the cube for keyboard focus:
+          arrows yaw/pitch, SPACE pauses. This build is <Key>single-threaded</Key> and paced by{" "}
+          <Key accent="metric-3">requestAnimationFrame</Key> on purpose — neither high-resolution sleep nor a
+          second GL thread exists on a browser main thread, so the pacer and the threaded render deliberately
+          do not port. Every number below comes from the <Key accent="metric-2">native build</Key>.
         </p>
       </section>
 
@@ -143,7 +164,7 @@ function Index() {
       <section id="metrics" className="mt-14 scroll-mt-20 grid gap-px overflow-hidden rounded-lg bg-hairline sm:grid-cols-3">
         <Stat
           accent={1}
-          label={`p99 jitter · ${hz} Hz`}
+          label={`p99 frame time · ${hz} Hz`}
           value={m.p99}
           unit="ms"
           sub={`naive sleep: ${m.p99Naive} ms`}
@@ -153,18 +174,30 @@ function Index() {
       </section>
 
       {/* Filters */}
-      <section className="mt-8 flex flex-wrap items-center gap-2">
-        {([60, 144, 240] as Hz[]).map((v) => (
-          <Chip key={v} active={hz === v} onClick={() => setHz(v)}>
-            {v} Hz
-          </Chip>
-        ))}
-        <span className="mx-2 h-4 w-px bg-hairline" />
-        {(Object.keys(PLATFORM_LABEL) as Platform[]).map((p) => (
-          <Chip key={p} tone="platform" active={platform === p} onClick={() => setPlatform(p)}>
-            {PLATFORM_LABEL[p]}
-          </Chip>
-        ))}
+      <section className="mt-8">
+        <div className="flex flex-wrap items-center gap-2">
+          {([60, 144, 240] as Hz[]).map((v) => (
+            <Chip key={v} active={hz === v} onClick={() => setHz(v)}>
+              {v} Hz
+            </Chip>
+          ))}
+          <span className="mx-2 h-4 w-px bg-hairline" />
+          {PLATFORMS.map((p) => (
+            <Chip key={p} tone="platform" active={platform === p} onClick={() => setPlatform(p)}>
+              {PLATFORM_LABEL[p]}
+            </Chip>
+          ))}
+        </div>
+        <p className="mt-3 font-mono text-xs text-muted-foreground">
+          {PLATFORM_SUBLABEL[platform]} · {prov.run_date} ·{" "}
+          <a href={prov.results_url} className="underline underline-offset-4 hover:no-underline">
+            {prov.source}
+          </a>{" "}
+          (commit {prov.commit})
+        </p>
+        {prov.measurement_class !== "" && (
+          <p className="mt-2 max-w-3xl text-xs leading-relaxed text-muted-foreground">{prov.measurement_class}</p>
+        )}
       </section>
 
       {/* Histogram */}
@@ -174,7 +207,7 @@ function Index() {
             Frame interval distribution — {PLATFORM_LABEL[platform]}, {hz} Hz
           </h2>
           <span className="font-mono text-xs text-muted-foreground">
-            <Key accent="metric-3">log y</Key> · <Key accent="metric-1">0.25 ms bins</Key> · <Key>600 000 frames</Key>
+            <Key accent="metric-3">log y</Key> · <Key accent="metric-1">50 µs data, 0.25 ms display bins</Key> · <Key>9,500 frames per cell</Key>
           </span>
         </div>
         <Histogram hz={hz} platform={platform} />
@@ -182,14 +215,87 @@ function Index() {
 
       {/* Tables */}
       <section id="results" className="mt-14 scroll-mt-20">
-        <h2 className="flex items-center gap-2 text-sm font-medium"><span className="h-2 w-2 rounded-full bg-metric-2" />Results — <Key accent="metric-2">tuned pacer</Key></h2>
+        <h2 className="flex items-center gap-2 text-sm font-medium"><span className="h-2 w-2 rounded-full bg-metric-2" />Results — <Key accent="metric-2">tuned pacer</Key> (--pace=timer_spin)</h2>
         <ResultTable rows={RESULT_ROWS} />
-        <h2 className="mt-10 flex items-center gap-2 text-sm font-medium"><span className="h-2 w-2 rounded-full bg-series-naive" />Baseline — <Key accent="series-naive">naive sleep loop</Key></h2>
+        <h2 className="mt-10 flex items-center gap-2 text-sm font-medium"><span className="h-2 w-2 rounded-full bg-series-naive" />Baseline — <Key accent="series-naive">naive sleep loop</Key> (--pace=sleep)</h2>
         <ResultTable rows={BASELINE_ROWS} />
-        <p className="mt-3 text-xs text-muted-foreground">
-          Jitter columns are <Key>absolute deviation</Key> from the <Key accent="metric-1">target interval</Key>, in milliseconds. Missed is the share of
-          intervals longer than the target.
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+          Frame time is <Key>deadline-to-deadline</Key>, in milliseconds — a zero-miss cell sits exactly at the
+          period <Key accent="metric-1">by construction</Key>, and the wake jitter each strategy absorbs is what
+          the histogram above shows (start-to-start). Missed is the share of the 9,500 measured frames whose
+          deadline was missed. The desktop tuned 60&nbsp;Hz max of 214.352&nbsp;ms is a single OS/driver stall
+          caught mid-run (3 misses of 9,500), left in the data.
         </p>
+      </section>
+
+      {/* Input handoff */}
+      <section id="handoff" className="mt-14 scroll-mt-20">
+        <h2 className="text-sm font-medium">{HANDOFF.title}</h2>
+        <div className="mt-3 max-w-3xl space-y-3 text-sm leading-relaxed text-muted-foreground">
+          {HANDOFF.intro.map((p) => (
+            <p key={p}>{highlight(p)}</p>
+          ))}
+        </div>
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-lg border border-border bg-card p-5 sm:p-6">
+            <h3 className="text-sm font-medium">Uncontended per-op cost — {PLATFORM_LABEL[platform]}</h3>
+            <div className="mt-4">
+              <HandoffCost rows={handoffCost(platform)} />
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{HANDOFF.costNote}</p>
+          </div>
+          <div className="rounded-lg border border-border bg-card p-5 sm:p-6">
+            <h3 className="text-sm font-medium">Contended sweep — {PLATFORM_LABEL[platform]}</h3>
+            <div className="mt-4">
+              <HandoffSweep
+                rows={handoffSweep(platform)}
+                showCrossover={platform === DESKTOP}
+                crossoverLabel={HANDOFF.sweepCrossover}
+              />
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{HANDOFF.sweepNote}</p>
+          </div>
+        </div>
+        {appRows.length > 0 ? (
+          <div className="mt-6 rounded-lg border border-border bg-card p-5 sm:p-6">
+            <h3 className="text-sm font-medium">In-app input latency — desktop run of record</h3>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[560px] text-sm">
+                <thead>
+                  <tr className="border-b border-hairline text-xs text-muted-foreground">
+                    <th className="py-2 text-left font-normal">backend</th>
+                    <th className="py-2 text-right font-normal">poll target</th>
+                    <th className="py-2 text-right font-normal">achieved Hz</th>
+                    <th className="py-2 text-right font-normal">p50 latency</th>
+                    <th className="py-2 text-right font-normal">p99 latency</th>
+                    <th className="py-2 text-right font-normal">retries/s</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {appRows.map((r) => (
+                    <tr key={r.backend + r.poll_hz} className="border-b border-hairline/60">
+                      <td className="py-2 pr-4 text-left">{r.backend}</td>
+                      <td className="py-2 text-right font-mono">{r.poll_hz.toLocaleString()}</td>
+                      <td className="py-2 text-right font-mono">{r.achieved_hz.toFixed(1)}</td>
+                      <td className="py-2 text-right font-mono text-metric-1">
+                        {r.lat_p50_ns === null ? "—" : `${(r.lat_p50_ns / 1e6).toFixed(3)} ms`}
+                      </td>
+                      <td className="py-2 text-right font-mono text-metric-2">
+                        {r.lat_p99_ns === null ? "—" : `${(r.lat_p99_ns / 1e6).toFixed(3)} ms`}
+                      </td>
+                      <td className="py-2 text-right font-mono text-metric-3">{r.retries_per_sec.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{highlight(HANDOFF.appNote)}</p>
+          </div>
+        ) : (
+          <p className="mt-4 text-xs text-muted-foreground">
+            In-app latency cells are a desktop protocol — CI runs measure only the micro-benchmark above.
+          </p>
+        )}
       </section>
 
       {/* Decision log */}
@@ -205,9 +311,7 @@ function Index() {
             >
               <h3 className="text-sm font-medium">{highlight(d.title)}</h3>
               <p className="mt-2 text-sm leading-relaxed text-foreground/80">{highlight(d.reasoning)}</p>
-              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                {highlight(d.changeMind)}
-              </p>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{highlight(d.changeMind)}</p>
             </article>
           ))}
         </div>
@@ -229,14 +333,7 @@ function Index() {
         <div>
           <h2 className="text-sm font-medium">Build</h2>
           <pre className="mt-3 overflow-x-auto rounded-lg border border-border bg-panel p-4 font-mono text-xs leading-relaxed text-muted-foreground">
-{`git clone https://github.com/nine/frame-pacer
-cd frame-pacer
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
-
-./build/pacer --hz 144 --frames 600000 --csv out.csv
-./build/pacer --hz 144 --baseline sleep --csv naive.csv
-python tools/hist.py out.csv naive.csv`}
+{BUILD_SNIPPET}
           </pre>
         </div>
       </section>
@@ -244,9 +341,9 @@ python tools/hist.py out.csv naive.csv`}
       {/* Bottom bar */}
       <footer className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-hairline pt-6">
         <p className="font-mono text-xs text-muted-foreground">
-          <span className="text-metric-1">nine</span>
+          <span className="text-metric-1">tiffany-mares</span>
           <span className="text-muted-foreground">/</span>
-          <span className="text-metric-3">frame-pacer</span>
+          <span className="text-metric-3">opengl-renderer</span>
         </p>
         <div className="flex items-center gap-4">
           <a
@@ -356,13 +453,14 @@ function Chip({
 function ResultTable({ rows }: { rows: Row[] }) {
   return (
     <div className="mt-3 overflow-x-auto">
-      <table className="w-full min-w-[640px] text-sm">
+      <table className="w-full min-w-[720px] text-sm">
         <thead>
           <tr className="border-b border-hairline text-xs text-muted-foreground">
-            <th className="py-2 text-left font-normal">configuration</th>
+            <th className="py-2 text-left font-normal">platform</th>
             <th className="py-2 text-right font-normal">Hz</th>
-            <th className="py-2 text-right font-normal">p50 jitter</th>
-            <th className="py-2 text-right font-normal">p99 jitter</th>
+            <th className="py-2 text-right font-normal">p50</th>
+            <th className="py-2 text-right font-normal">p95</th>
+            <th className="py-2 text-right font-normal">p99</th>
             <th className="py-2 text-right font-normal">max</th>
             <th className="py-2 text-right font-normal">missed %</th>
             <th className="py-2 text-right font-normal">CPU %</th>
@@ -374,6 +472,7 @@ function ResultTable({ rows }: { rows: Row[] }) {
               <td className="py-2 pr-4 text-left">{r.platform}</td>
               <td className="py-2 text-right font-mono">{r.hz}</td>
               <td className="py-2 text-right font-mono">{r.p50}</td>
+              <td className="py-2 text-right font-mono">{r.p95}</td>
               <td className="py-2 text-right font-mono text-metric-1">{r.p99}</td>
               <td className="py-2 text-right font-mono">{r.max}</td>
               <td className="py-2 text-right font-mono text-metric-2">{r.missed}</td>
@@ -388,67 +487,54 @@ function ResultTable({ rows }: { rows: Row[] }) {
 
 const KEYWORDS: { term: string; accent: Parameters<typeof Key>[0]["accent"] }[] = [
   { term: "would change my mind:", accent: "series-target" },
-  { term: "missed-deadline percentage", accent: "metric-2" },
-  { term: "average frame time", accent: "metric-2" },
-  { term: "mach_absolute_time", accent: "metric-3" },
+  { term: "--pace=sleep|timer|timer_spin|spin", accent: "metric-2" },
+  { term: "--input=mutex|bitmask|seqlock", accent: "metric-2" },
+  { term: "--resched=relative", accent: "series-naive" },
+  { term: "CreateWaitableTimerExW", accent: "metric-3" },
+  { term: "clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME)", accent: "metric-3" },
+  { term: "CLOCK_THREAD_CPUTIME_ID", accent: "metric-3" },
+  { term: "QueryThreadCycleTime", accent: "metric-3" },
   { term: "requestAnimationFrame", accent: "metric-3" },
-  { term: "high-resolution timer", accent: "metric-1" },
-  { term: "timeBeginPeriod", accent: "metric-2" },
-  { term: "timer resolution", accent: "metric-2" },
-  { term: "render thread", accent: "metric-3" },
-  { term: "timer thread", accent: "metric-3" },
-  { term: "spin margin", accent: "metric-1" },
-  { term: "Spin margin", accent: "metric-1" },
-  { term: "Spin-wait", accent: "metric-1" },
+  { term: "THREAD_TIME_CONSTRAINT_POLICY", accent: "metric-3" },
+  { term: "glfwSwapInterval(0)", accent: "metric-2" },
+  { term: "Welford mean + 3σ", accent: "metric-1" },
+  { term: "next += period", accent: "metric-2" },
+  { term: "now + period", accent: "series-naive" },
+  { term: "≈100,000 publishes/s", accent: "metric-1" },
+  { term: "≈0.002 per second", accent: "metric-1" },
+  { term: "15.6 ms timer tick", accent: "series-naive" },
+  { term: "15.6 ms scheduler ticks", accent: "series-naive" },
+  { term: "2–3 ms late", accent: "series-naive" },
+  { term: "p50 ≈ 0.64 ms", accent: "metric-1" },
+  { term: "0.345 ms", accent: "metric-1" },
+  { term: "+0.664 ms per frame", accent: "series-naive" },
+  { term: "5.7 s behind after a minute", accent: "series-naive" },
+  { term: "zero missed deadlines", accent: "metric-1" },
+  { term: "missed-deadline", accent: "metric-2" },
+  { term: "absolute deadlines", accent: "metric-2" },
+  { term: "deadline-to-deadline", accent: "metric-2" },
+  { term: "start-to-start", accent: "metric-2" },
+  { term: "std::mutex", accent: "metric-1" },
+  { term: "seqlock", accent: "metric-3" },
+  { term: "bitmask", accent: "metric-2" },
+  { term: "timer_spin", accent: "metric-2" },
+  { term: "~100 µs synthetic", accent: "metric-2" },
+  { term: "~1 kHz", accent: "metric-1" },
+  { term: "1,000 publishes/s", accent: "metric-1" },
+  { term: "llvmpipe", accent: "metric-3" },
+  { term: "data race", accent: "series-naive" },
+  { term: "undefined behavior", accent: "series-naive" },
+  { term: "torn=0", accent: "metric-2" },
+  { term: "single-threaded", accent: "metric-2" },
+  { term: "WebGL2", accent: "metric-3" },
   { term: "native build", accent: "metric-2" },
-  { term: "single threaded", accent: "metric-2" },
-  { term: "target interval", accent: "metric-1" },
-  { term: "absolute deviation", accent: "metric-2" },
-  { term: "tuned pacer", accent: "metric-2" },
-  { term: "naive sleep loop", accent: "series-naive" },
-  { term: "QPC", accent: "metric-3" },
-  { term: "1.2 ms", accent: "metric-1" },
-  { term: "p99", accent: "metric-1" },
-  { term: "0.5 ms", accent: "metric-2" },
-  { term: "7.9 ms", accent: "series-naive" },
-  { term: "half a millisecond", accent: "metric-1" },
-  { term: "compositor", accent: "metric-3" },
-  { term: "capture card", accent: "metric-2" },
-  { term: "render-loop pacer", accent: "metric-2" },
+  { term: "frame pacer", accent: "metric-2" },
   { term: "frame deadline", accent: "metric-3" },
-  { term: "third of a millisecond", accent: "metric-1" },
-  { term: "600 000 frames", accent: "metric-2" },
-  { term: "0.25 ms bins", accent: "metric-1" },
-  { term: "log y", accent: "metric-3" },
+  { term: "naive sleep loop", accent: "series-naive" },
+  { term: "9,500 measured frames", accent: "metric-2" },
   { term: "144 Hz", accent: "metric-1" },
-  { term: "OS", accent: "series-naive" },
-  { term: "unredirected fullscreen", accent: "metric-3" },
-  { term: "Windowed mode", accent: "series-naive" },
-  { term: "fixed refresh target", accent: "metric-2" },
-  { term: "VRR", accent: "series-naive" },
-  { term: "GPU vendors", accent: "metric-3" },
-  { term: "laptop power profiles", accent: "metric-3" },
-  { term: "raw hardware counter", accent: "metric-1" },
-  { term: "raw counter", accent: "metric-1" },
-  { term: "spin-busy-waits", accent: "metric-1" },
-  { term: "small margin", accent: "metric-1" },
+  { term: "AC power", accent: "metric-3" },
   { term: "OS scheduler", accent: "series-naive" },
-  { term: "present exactly at the deadline", accent: "metric-2" },
-  { term: "process timer resolution", accent: "metric-2" },
-  { term: "timer granules", accent: "metric-2" },
-  { term: "compositor's timestamp", accent: "metric-3" },
-  { term: "vsync", accent: "series-naive" },
-  { term: "VSync", accent: "series-naive" },
-  { term: "glfwSwapBuffers", accent: "series-naive" },
-  { term: "swap interval", accent: "series-naive" },
-  { term: "triple-buffering", accent: "series-naive" },
-  { term: "Explicit frame pacer", accent: "metric-2" },
-  { term: "Sub-millisecond timing control", accent: "metric-1" },
-  { term: "Measurable jitter and misses", accent: "metric-2" },
-  { term: "Adaptive to work load", accent: "metric-3" },
-  { term: "Portable native timing", accent: "metric-1" },
-  { term: "OS compositor", accent: "series-naive" },
-  { term: "high-resolution counter", accent: "metric-1" },
 ];
 
 function highlight(text: string): React.ReactNode {
