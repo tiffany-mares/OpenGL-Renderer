@@ -28,9 +28,10 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    // Emscripten's GLFW maps CONTEXT_VERSION_MAJOR >= 3 to a WebGL2 context
-    // (available because the build sets -sMAX_WEBGL_VERSION=2; MIN=2 makes
-    // a WebGL1-only browser fail loudly instead of silently downgrading).
+    // The WebGL2 context comes from the build flags (-sMIN_WEBGL_VERSION=2
+    // -sMAX_WEBGL_VERSION=2; MIN=2 makes a WebGL1-only browser fail loudly
+    // instead of silently downgrading). The GLFW version hints below are
+    // inert in Emscripten's GLFW port and kept as documentation of intent.
     // GLFW_OPENGL_PROFILE and FORWARD_COMPAT are desktop-GL concepts —
     // omitted deliberately; WebGL has no profiles.
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);

@@ -63,8 +63,9 @@ def main() -> None:
             sys.exit(f"FATAL: emcc exited 0 but {artifact} was not produced")
 
     page = root / "web" / "index.html"
-    if page.is_file():
-        shutil.copyfile(page, out / "index.html")
+    if not page.is_file():
+        sys.exit(f"FATAL: {page} is missing -- the site would deploy without its page")
+    shutil.copyfile(page, out / "index.html")
 
     print(f"wasm: js_bytes={js.stat().st_size} wasm_bytes={wasm.stat().st_size} "
           f"out={out}", flush=True)
