@@ -94,12 +94,12 @@ static double calibrate_cycles_per_ns() {
     double best_rate = 0.0;
     for (int i = 0; i < 3; ++i) {
         ULONG64 cyc0 = 0, cyc1 = 0;
-        QueryThreadCycleTime(GetCurrentThread(), &cyc0);
+        if (!QueryThreadCycleTime(GetCurrentThread(), &cyc0)) continue;
         const uint64_t t0 = pacer_now_ns();
         while (pacer_now_ns() - t0 < kSampleNs) {
             // pure busy-spin: keep this thread on-CPU for the whole sample
         }
-        QueryThreadCycleTime(GetCurrentThread(), &cyc1);
+        if (!QueryThreadCycleTime(GetCurrentThread(), &cyc1)) continue;
         const uint64_t dt = pacer_now_ns() - t0;
         if (dt == 0) continue;
         const double rate = static_cast<double>(cyc1 - cyc0) / static_cast<double>(dt);
