@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "gen-data": "node scripts/gen-lab-data.mjs",
+    "predev": "node scripts/stage-cube.mjs",
     "dev": "vite dev",
+    "prebuild": "node scripts/stage-cube.mjs",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
