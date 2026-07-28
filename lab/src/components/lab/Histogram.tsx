@@ -18,6 +18,7 @@ export function Histogram({ hz, platform }: { hz: Hz; platform: Platform }) {
   };
 
   const barW = Math.max(1.5, x(0.25) - x(0));
+  const barH = (c: number) => (c > 0 ? Math.max(3, H - PAD.bottom - y(c)) : 0);
   const yTicks = [1, 10, 100, 1000, 10000].filter((t) => t <= maxCount * 1.2);
   const xTicks = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 
@@ -62,9 +63,9 @@ export function Histogram({ hz, platform }: { hz: Hz; platform: Platform }) {
           <rect
             key={`n${b.ms}`}
             x={x(b.ms)}
-            y={y(b.naive)}
+            y={H - PAD.bottom - barH(b.naive)}
             width={barW}
-            height={b.naive > 0 ? Math.max(3, H - PAD.bottom - y(b.naive)) : 0}
+            height={barH(b.naive)}
             fill="var(--series-naive)"
             opacity={0.75}
           />
@@ -73,9 +74,9 @@ export function Histogram({ hz, platform }: { hz: Hz; platform: Platform }) {
           <rect
             key={`t${b.ms}`}
             x={x(b.ms)}
-            y={y(b.tuned)}
+            y={H - PAD.bottom - barH(b.tuned)}
             width={barW}
-            height={b.tuned > 0 ? Math.max(3, H - PAD.bottom - y(b.tuned)) : 0}
+            height={barH(b.tuned)}
             fill="var(--series-tuned)"
           />
         ))}
