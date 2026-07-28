@@ -31,3 +31,11 @@ struct RenderConfig {
 void render_thread_main(GLFWwindow* window, const InputChannel& input,
                         const FramebufferSize& fb, RenderConfig cfg,
                         const std::atomic<bool>& stop, std::atomic<bool>& failed);
+
+#ifdef __EMSCRIPTEN__
+// Phase 8 web entry: makes the context current on the (only) thread, builds
+// the scene, hands the frame clock to requestAnimationFrame via
+// emscripten_set_main_loop — which never returns. Returns nonzero only on
+// scene-init failure, before the loop starts.
+int run_web(GLFWwindow* window);
+#endif

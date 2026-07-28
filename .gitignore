@@ -5,3 +5,4 @@ out/
 .cache/
 CMakeUserPresets.json
 bench/results/raw/
+dist/

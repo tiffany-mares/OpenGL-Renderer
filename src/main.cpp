@@ -17,6 +17,37 @@ static void glfw_error_callback(int code, const char* desc) {
     std::fprintf(stderr, "GLFW error %d: %s\n", code, desc);
 }
 
+#ifdef __EMSCRIPTEN__
+
+// Phase 8: the web main. No flags, no threads, no poll pacer — one thread,
+// one window, and run_web hands the clock to requestAnimationFrame.
+int main() {
+    glfwSetErrorCallback(glfw_error_callback);
+    if (!glfwInit()) {
+        std::fprintf(stderr, "glfwInit failed\n");
+        return EXIT_FAILURE;
+    }
+
+    // Emscripten's GLFW maps CONTEXT_VERSION_MAJOR >= 3 to a WebGL2 context
+    // (available because the build sets -sMAX_WEBGL_VERSION=2; MIN=2 makes
+    // a WebGL1-only browser fail loudly instead of silently downgrading).
+    // GLFW_OPENGL_PROFILE and FORWARD_COMPAT are desktop-GL concepts —
+    // omitted deliberately; WebGL has no profiles.
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+
+    GLFWwindow* window = glfwCreateWindow(960, 540, "cube", nullptr, nullptr);
+    if (!window) {
+        std::fprintf(stderr, "glfwCreateWindow failed\n");
+        glfwTerminate();
+        return EXIT_FAILURE;
+    }
+
+    return run_web(window);
+}
+
+#else  // native
+
 int main(int argc, char** argv) {
     const char* backend = "mutex";  // the baseline is the default
     uint32_t fps = 0;               // 0 = uncapped (pre-Phase-5 behavior)
@@ -271,3 +302,5 @@ int main(int argc, char** argv) {
     glfwTerminate();
     return render_failed.load() ? EXIT_FAILURE : EXIT_SUCCESS;
 }
+
+#endif  // __EMSCRIPTEN__

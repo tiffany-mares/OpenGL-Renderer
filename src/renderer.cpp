@@ -4,8 +4,15 @@
 #include <cstdint>
 #include <memory>
 
+#ifdef __EMSCRIPTEN__
+// Web build: WebGL2 via the GLES3 headers — no glad (gladLoadGL is
+// desktop-only; the browser provides the GL symbols at link time).
+#include <emscripten/emscripten.h>
+#include <GLES3/gl3.h>
+#else
 #define GLAD_GL_IMPLEMENTATION
 #include <glad/gl.h>
+#endif
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
@@ -19,6 +26,35 @@
 // Transform comes from the CPU now (src/mat4.h). Colors stay `flat`: the
 // provoking (last) vertex of each triangle colors the whole face — see the
 // index buffer comment.
+#ifdef __EMSCRIPTEN__
+// GLSL ES 3.00 for WebGL2. `#version 300 es` must be the very first
+// characters of the source (the desktop literals start with a newline; ES
+// rejects that), and the fragment stage requires an explicit default
+// precision. `flat` interpolation with last-vertex provoking is the WebGL2
+// default (there is no glProvokingVertex in the spec), so the index-winding
+// per-face color trick survives unchanged.
+static const char* kVertexSrc = R"glsl(#version 300 es
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aColor;
+uniform mat4 uMvp;
+flat out vec3 vColor;
+
+void main() {
+    gl_Position = uMvp * vec4(aPos, 1.0);
+    vColor = aColor;
+}
+)glsl";
+
+static const char* kFragmentSrc = R"glsl(#version 300 es
+precision highp float;
+flat in vec3 vColor;
+out vec4 FragColor;
+
+void main() {
+    FragColor = vec4(vColor, 1.0);
+}
+)glsl";
+#else
 static const char* kVertexSrc = R"glsl(
 #version 330 core
 layout (location = 0) in vec3 aPos;
@@ -41,6 +77,7 @@ void main() {
     FragColor = vec4(vColor, 1.0);
 }
 )glsl";
+#endif
 
 static GLuint compile_shader(GLenum type, const char* src) {
     GLuint s = glCreateShader(type);
@@ -110,6 +147,71 @@ static const unsigned int kIndices[] = {
     6, 2, 3,   7, 6, 3,  // +Y top    (provoking vertex 3)
 };
 
+// The GL scene, shared verbatim between the native render thread and the
+// Phase 8 web path: one program, one VAO/VBO/EBO, one uniform.
+struct SceneGL {
+    GLuint program = 0, vao = 0, vbo = 0, ebo = 0;
+    GLint mvpLoc = -1;
+};
+
+// Compile+link the shaders and build the cube's buffers on the current
+// context. Returns false if the program fails (compile_shader/link_program
+// already printed why). Depth-test enable stays with the caller.
+static bool scene_init(SceneGL& s) {
+    s.program = link_program(kVertexSrc, kFragmentSrc);
+    if (s.program == 0) return false;
+
+    s.mvpLoc = glGetUniformLocation(s.program, "uMvp");
+
+    glGenVertexArrays(1, &s.vao);
+    glGenBuffers(1, &s.vbo);
+    glGenBuffers(1, &s.ebo);
+    glBindVertexArray(s.vao);
+    glBindBuffer(GL_ARRAY_BUFFER, s.vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof kVertices, kVertices, GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, s.ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof kIndices, kIndices, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    return true;
+}
+
+// Viewport + clear + MVP + draw: one frame's GL, nothing else — no capture,
+// no logging, no swap. Callers own everything between draw and swap.
+static void scene_draw(const SceneGL& s, int fb_w, int fb_h,
+                       double angle, double yaw, double pitch) {
+    glViewport(0, 0, fb_w, fb_h);
+    glClearColor(0.05f, 0.05f, 0.06f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    mat4 model = rotate({1.f, 0.f, 0.f}, static_cast<float>(pitch)) *
+                 rotate({0.f, 1.f, 0.f}, static_cast<float>(yaw)) *
+                 rotate({0.5f, 1.f, 0.25f}, static_cast<float>(angle));
+    mat4 view = lookAt({2.2f, 1.6f, 2.6f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
+    mat4 proj = perspective(1.0471976f,
+                            static_cast<float>(fb_w) / static_cast<float>(fb_h),
+                            0.1f, 100.f);
+    mat4 mvp = proj * view * model;
+    glUseProgram(s.program);
+    glUniformMatrix4fv(s.mvpLoc, 1, GL_FALSE, mvp.m);  // column-major: no transpose
+    glBindVertexArray(s.vao);
+    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
+}
+
+static void scene_destroy(SceneGL& s) {
+    glDeleteVertexArrays(1, &s.vao);
+    glDeleteBuffers(1, &s.vbo);
+    glDeleteBuffers(1, &s.ebo);
+    glDeleteProgram(s.program);
+    s = SceneGL{};
+}
+
+#ifndef __EMSCRIPTEN__
+// render_thread_main calls gladLoadGL and cannot compile on web; the
+// Emscripten path is run_web/web_frame further down this file.
+
 // Fixed per-frame CPU cost for instrumented runs (~100 µs): the CSV then
 // measures the pacer against a constant workload, not GPU/driver variance.
 // The volatile sink is what stops the optimizer deleting the call.
@@ -133,29 +235,13 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
     std::printf("GL_VERSION:  %s\n", glGetString(GL_VERSION));
     std::printf("GL_RENDERER: %s\n", glGetString(GL_RENDERER));
 
-    GLuint program = link_program(kVertexSrc, kFragmentSrc);
-    if (program == 0) {
+    SceneGL scene;
+    if (!scene_init(scene)) {
         failed.store(true);
         glfwMakeContextCurrent(nullptr);
         glfwSetWindowShouldClose(window, GLFW_TRUE);
         return;
     }
-
-    GLint mvpLoc = glGetUniformLocation(program, "uMvp");
-
-    GLuint vao = 0, vbo = 0, ebo = 0;
-    glGenVertexArrays(1, &vao);
-    glGenBuffers(1, &vbo);
-    glGenBuffers(1, &ebo);
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof kVertices, kVertices, GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof kIndices, kIndices, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
 
     glEnable(GL_DEPTH_TEST);
 
@@ -246,22 +332,7 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
         pitch += dt * kManualRate * (((in.keys & kKeyDown) ? 1 : 0) - ((in.keys & kKeyUp) ? 1 : 0));
         prev = now;
 
-        glViewport(0, 0, fb_w, fb_h);
-        glClearColor(0.05f, 0.05f, 0.06f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        mat4 model = rotate({1.f, 0.f, 0.f}, static_cast<float>(pitch)) *
-                     rotate({0.f, 1.f, 0.f}, static_cast<float>(yaw)) *
-                     rotate({0.5f, 1.f, 0.25f}, static_cast<float>(angle));
-        mat4 view = lookAt({2.2f, 1.6f, 2.6f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
-        mat4 proj = perspective(1.0471976f,
-                                static_cast<float>(fb_w) / static_cast<float>(fb_h),
-                                0.1f, 100.f);
-        mat4 mvp = proj * view * model;
-        glUseProgram(program);
-        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, mvp.m);  // column-major: no transpose
-        glBindVertexArray(vao);
-        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
+        scene_draw(scene, fb_w, fb_h, angle, yaw, pitch);
 
         if (logging) g_workload_sink = synthetic_workload(kWorkloadIters);
 
@@ -358,9 +429,69 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
     }
 
     // GL teardown on the owning thread, before the main thread joins us.
-    glDeleteVertexArrays(1, &vao);
-    glDeleteBuffers(1, &vbo);
-    glDeleteBuffers(1, &ebo);
-    glDeleteProgram(program);
+    scene_destroy(scene);
     glfwMakeContextCurrent(nullptr);
 }
+#endif  // !__EMSCRIPTEN__
+
+#ifdef __EMSCRIPTEN__
+
+// Phase 8: single-threaded, browser-paced. requestAnimationFrame owns the
+// frame clock, so there is no pacer; one thread means glfwGetKey directly —
+// the InputChannel machinery is deliberately bypassed (no log, no capture
+// either: the instrumentation measures systems that do not exist here).
+struct WebState {
+    GLFWwindow* window = nullptr;
+    SceneGL scene{};
+    double angle = 0.0, yaw = 0.0, pitch = 0.0;
+    double prev = 0.0;  // glfwGetTime at the previous frame
+};
+static WebState g_web;
+
+static void web_frame() {
+    glfwPollEvents();
+    GLFWwindow* w = g_web.window;
+    const bool space = glfwGetKey(w, GLFW_KEY_SPACE) == GLFW_PRESS;
+    const bool left  = glfwGetKey(w, GLFW_KEY_LEFT)  == GLFW_PRESS;
+    const bool right = glfwGetKey(w, GLFW_KEY_RIGHT) == GLFW_PRESS;
+    const bool up    = glfwGetKey(w, GLFW_KEY_UP)    == GLFW_PRESS;
+    const bool down  = glfwGetKey(w, GLFW_KEY_DOWN)  == GLFW_PRESS;
+
+    // Same rotation math as the native loop: wall-clock dt, SPACE pauses
+    // the spin, arrows yaw/pitch at 2.2 rad/s.
+    const double now = glfwGetTime();
+    const double dt = now - g_web.prev;
+    g_web.prev = now;
+    if (!space) g_web.angle += dt * 0.9;
+    constexpr double kManualRate = 2.2;  // rad/s while an arrow is held
+    g_web.yaw   += dt * kManualRate * ((right ? 1 : 0) - (left ? 1 : 0));
+    g_web.pitch += dt * kManualRate * ((down ? 1 : 0) - (up ? 1 : 0));
+
+    int fb_w = 0, fb_h = 0;
+    glfwGetFramebufferSize(w, &fb_w, &fb_h);
+
+    scene_draw(g_web.scene, fb_w, fb_h, g_web.angle, g_web.yaw, g_web.pitch);
+    glfwSwapBuffers(w);  // effectively a no-op under RAF; kept to mirror native
+}
+
+int run_web(GLFWwindow* window) {
+    glfwMakeContextCurrent(window);  // one thread: current here is current everywhere
+
+    std::printf("GL_VERSION:  %s\n", glGetString(GL_VERSION));
+    std::printf("GL_RENDERER: %s\n", glGetString(GL_RENDERER));
+
+    if (!scene_init(g_web.scene)) return 1;
+
+    glEnable(GL_DEPTH_TEST);
+
+    g_web.window = window;
+    g_web.prev = glfwGetTime();
+
+    // simulate_infinite_loop=1: this call never returns (it unwinds out of
+    // main); the browser drives web_frame at display refresh from here on.
+    // fps=0 means "use requestAnimationFrame", which is the entire point.
+    emscripten_set_main_loop(web_frame, 0, 1);
+    return 0;  // unreachable
+}
+
+#endif  // __EMSCRIPTEN__
