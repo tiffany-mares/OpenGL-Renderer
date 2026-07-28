@@ -56,9 +56,10 @@ int main(int argc, char** argv) {
             const char* v = (arg == "--bench-frames") ? argv[++i] : argv[i] + 15;
             char* end = nullptr;
             const unsigned long long parsed = std::strtoull(v, &end, 10);
-            if (end == v || *end != '\0' || parsed <= 500) {
+            if (end == v || *end != '\0' || parsed <= 500 || parsed > 10'000'000ULL) {
                 std::fprintf(stderr,
-                             "bad --bench-frames value '%s' (must exceed the 500-frame warmup)\n", v);
+                             "bad --bench-frames value '%s' (must exceed the 500-frame warmup "
+                             "and not exceed 10000000)\n", v);
                 return EXIT_FAILURE;
             }
             bench_frames = parsed;

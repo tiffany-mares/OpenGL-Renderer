@@ -1,6 +1,7 @@
 #include "pacer.h"
 
 #include <chrono>
+#include <cstdio>
 #include <mutex>
 #include <thread>
 
@@ -111,7 +112,13 @@ static double calibrate_cycles_per_ns() {
 uint64_t thread_cpu_now_ns() {
     static std::once_flag calib_once;
     static double cycles_per_ns = 0.0;
-    std::call_once(calib_once, [] { cycles_per_ns = calibrate_cycles_per_ns(); });
+    std::call_once(calib_once, [] {
+        cycles_per_ns = calibrate_cycles_per_ns();
+        if (cycles_per_ns <= 0.0) {
+            std::fprintf(stderr,
+                         "warning: thread-CPU calibration failed; cpu_ns will read 0\n");
+        }
+    });
     if (cycles_per_ns <= 0.0) return 0;
 
     ULONG64 cycles = 0;

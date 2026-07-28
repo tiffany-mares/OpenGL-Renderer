@@ -44,6 +44,8 @@ def load_run(raw: Path, name: str):
         rows = list(csv.DictReader(f))
     measured = rows[warmup:]
     ft = sorted(int(r["frame_time_ns"]) for r in measured)
+    if not ft:
+        sys.exit(f"FATAL: {name}.csv has no post-warmup rows -- truncated log?")
     return {
         "n": len(ft),
         "p50": percentile(ft, 0.50),
@@ -75,7 +77,7 @@ def main() -> None:
           f"Raw dir: `{raw}`  \n"
           f"frame_time_ns is deadline-to-deadline (paced) or start-to-start "
           f"(uncapped); first-warmup frames discarded per the runs' bench lines. "
-          f"CPU%% is render-thread time / wall time over the measured window.\n"]
+          f"CPU% is render-thread time / wall time over the measured window.\n"]
     header = ("| strategy | p50 ms | p95 ms | p99 ms | max ms | stddev ms "
               "| missed | cpu % |")
     rule = "|---|---|---|---|---|---|---|---|"

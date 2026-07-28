@@ -24,6 +24,12 @@ none are defects:
 - **Run artifact:** the timer_spin-60 cell caught a single ~214 ms stall (max 214.352 ms,
   3 missed deadlines out of 9500, p50/p95/p99 unaffected) — a one-off OS/driver preemption
   during that 158 s window, visible in the max/stddev columns and left in the data.
+- **CPU% only compares equal work.** At 240 Hz, `sleep_for`'s lower CPU% (6.19% vs the
+  high-res timer's 9.14%) is not "cheaper at the same job": sleep-240 missed half its
+  deadlines and delivered roughly half the target rate (p50 8.29 ms vs the 4.17 ms period),
+  so it did less work per wall second. The CPU column only compares equal work between
+  cells that held their target rate (zero or near-zero misses); it should not be read as a
+  cost ranking across cells that didn't.
 
 Note that paced cells with zero misses show p50=p95=p99=max=period with stddev 0.000 by
 construction: deadline-to-deadline frame time deviates from the period only when a deadline
