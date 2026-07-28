@@ -298,9 +298,10 @@ dev-only dependencies, never installed in CI: `bench/plot_frames.py`
 
 ### CLI reference
 
-Every flag accepts `--flag=value` and `--flag value`. Bad values print
-`bad --<flag> value` plus usage to stderr and exit 1, before any window
-exists.
+Every value-taking flag except `--input` accepts both `--flag=value` and
+`--flag value` (`--input` takes only the `=` form). Bad values print an
+error to stderr (`bad --<flag> value ...`; for `--input`, `unknown input
+backend`) and exit 1, before any window exists.
 
 | flag | values (default) | requires | what it does |
 |---|---|---|---|
