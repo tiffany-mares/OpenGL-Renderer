@@ -33,7 +33,9 @@ to this page is a **later step**; nothing here touches `web/`, `dist/`, or the w
 |---|---|
 | `bench/results/2026-07-27-summary.csv` | Desktop (win11-arc) 13-cell pacing matrix: `strategy,rate_hz,n,p50_ns,p95_ns,p99_ns,max_ns,stddev_ns,missed,cpu_pct` |
 | `web/data/frametime-hist.json` | Desktop start-to-start interval histograms, 50 µs bins, 13 cells, provenance embedded |
+| `bench/results/2026-07-27-handoff-summary.csv` | Desktop handoff results: `cost` rows (per-op publish/read ns × 3 backends), `app` rows (in-app latency p50/p99 at 1 k/10 k poll), `sweep` rows (reader p99 vs publish rate, 5 rates × 3 backends) |
 | `bench/results/ci/{windows-latest,ubuntu-latest}/pacing-summary.csv` | Same schema, CI runners (llvmpipe) |
+| `bench/results/ci/<platform>/handoff-summary.csv` | Micro-only (`cost` + `sweep`; no `app` cells — those are the desktop protocol) |
 | `bench/results/ci/<platform>/frametime-hist.json` | Same histogram schema, CI |
 | `bench/results/ci/<platform>/provenance.json` | CI run provenance |
 | `README.md` | Real decision log (5 entries), known limitations, build instructions, CLI reference |
@@ -88,7 +90,14 @@ that ignore list — they are build artifacts, same doctrine as `dist/`.
       provenance: { run_date, source_commit|run_id, machine, results_doc },
       pacing: [ { strategy, hz, n, p50_ms, p95_ms, p99_ms, max_ms, stddev_ms,
                   missed, missed_pct, cpu_pct } × 13 ],
-      hist: { bin_ms: 0.05, cells: { "sleep-60": {n, bins, counts}, ... } }
+      hist: { bin_ms: 0.05, cells: { "sleep-60": {n, bins, counts}, ... } },
+      handoff: {
+        cost:  [ { backend, publish_ns, read_ns } × 3 ],
+        sweep: [ { backend, target_hz, achieved_hz, read_p99_ns,
+                   retries_per_sec, torn } × 15 ],
+        app:   [ { backend, poll_hz, lat_p50_ns, lat_p99_ns, achieved_hz,
+                   retries_per_sec } ]   // desktop only; empty [] for CI platforms
+      }
     },
     "windows-latest": { ... }, "ubuntu-latest": { ... }
   }
@@ -101,6 +110,7 @@ that ignore list — they are build artifacts, same doctrine as `dist/`.
   `missed_pct` = missed/n × 100. No other derivation — numbers stay verbatim.
 - **Validation (FATAL, exit 1, matching the repo's build.py doctrine):** missing file,
   missing column, ≠13 pacing rows per platform, missing hist cell, `bin_ns` ≠ 50000,
+  ≠3 handoff cost rows, ≠15 sweep rows, app rows present for the desktop but absent for CI,
   non-numeric field. All platforms are required — unlike build.py's skip-with-warning,
   the generator runs from a checkout where all three exist; failing loud beats silently
   shipping a two-platform page.
@@ -167,6 +177,24 @@ generated JSON:
     The staged files are git-ignored (build artifacts).
   - The boundary caption stays accurate and gets aligned with the live page's wording:
     single-threaded, rAF-paced, pacer and threaded render deliberately absent.
+- **Handoff section (new).** A section after the pacing tables, in the SectionNav, covering
+  the project's second system so the page fully supersedes the dashboard at swap time:
+  - Short intro prose: the three `InputChannel` backends (mutex baseline, atomic bitmask,
+    seqlock) and what the handoff benchmark measures.
+  - **Per-op cost bars** — publish vs read ns per backend, from the `cost` rows. New SVG
+    component in the lab's style (like `Histogram.tsx`; no chart library).
+  - **Contended sweep** — reader p99 (ns) vs *achieved* publish rate, log-x, one series per
+    backend, from the `sweep` rows. The ≈100 k publishes/s crossover annotation renders for
+    the desktop platform only (repo doctrine: measured there, not asserted for llvmpipe CI).
+    Captions carry the dashboard's honesty notes: batched/amortized cost is not single-call
+    latency; points sit at achieved rates; the mutex tail below the crossover sits at the
+    100 ns measurement floor.
+  - **In-app latency mini-table** — desktop only (p50/p99 input latency at 1 k/10 k poll,
+    with achieved poll rates); hidden for CI platforms with a one-line note that app cells
+    are a desktop protocol. Bitmask shows "—" (it cannot carry the timestamp — the Phase 4
+    asymmetry, worth one prose sentence).
+  - The section reacts to the platform chip; the Hz chips don't apply (noted in the caption,
+    same as the dashboard).
 - **`index.tsx`:** platform chips render the three real platforms; hero subtitle and stat
   claims re-anchored to real numbers ("zero missed deadlines out of 9,500 at 144 Hz, and what
   it costs"); branding becomes `tiffany-mares / opengl-renderer` in the header breadcrumb,
@@ -188,7 +216,9 @@ if the wasm module errors (e.g. WebGL2 unavailable), never a blank panel.
   timestamps in the JSON). Its validation is the test for malformed input.
 - Spot-check generated values against the committed MD tables: desktop sleep-144
   missed = 4750 / p99 = 9.792 ms / cpu 6.34%; timer_spin-144 cpu 11.96%; windows-latest
-  sleep-144 missed = 2852; ubuntu-latest timer_spin rows all-zero missed.
+  sleep-144 missed = 2852; ubuntu-latest timer_spin rows all-zero misses. Handoff:
+  desktop cost mutex 16.6/15.9 ns vs seqlock 2.3/2.1 ns; desktop seqlock unthrottled sweep
+  ≈15.7 M achieved Hz; desktop app mutex@1k lat_p50 = 639.5 µs.
 - `npm run build` (or `bun run build`) passes; dev-server visual pass over all
   3 platforms × 3 rates: tiles, histogram, tables, overflow notes, no NaN/undefined.
 - Cube: build `dist/` once locally (emsdk at `C:\Users\tiffm\emsdk`), run the dev server,
@@ -202,8 +232,10 @@ if the wasm module errors (e.g. WebGL2 unavailable), never a blank panel.
 
 - Swapping the live Cloudflare deployment to serve this page (follow-up step; will fold the
   lab build + cube staging into `pages.yml` and retire `web/index.html`/`dashboard.js`).
-- Handoff-benchmark section on the lab page (dashboard covers it; link instead — revisit at
-  the deployment-swap step since the dashboard retires then).
+  With the handoff section now in scope, the lab page covers both of the dashboard's
+  sections. The only content not carried over: the full four-strategy histograms/tables
+  (`timer`, `spin`, uncapped) — the page tells the tuned-vs-naive story and links to the
+  committed results docs for the rest. Acceptable loss to confirm at swap time.
 - Lovable sync mechanics (Lovable is treated as a one-time design export; future edits are
   made locally).
 
@@ -215,3 +247,5 @@ if the wasm module errors (e.g. WebGL2 unavailable), never a blank panel.
 3. **Branding:** `tiffany-mares / opengl-renderer`; headline keeps the frame-deadline hook.
 4. **Cube:** embed the real wasm build in this step, replacing the decorative wireframe
    (integration surface verified small against `web/index.html`).
+5. **Handoff section:** in scope for this step — the page gains a full input-handoff section
+   (cost bars, contended sweep, desktop app-latency table) so it supersedes the dashboard.
