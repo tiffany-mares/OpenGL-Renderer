@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cube — OpenGL-Renderer, single-threaded web build</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0d0d10; color: #c8c8cc;
+         font: 15px/1.5 system-ui, sans-serif;
+         display: flex; justify-content: center; }
+  main { max-width: 760px; padding: 28px 16px 48px; }
+  h1 { font-size: 1.3rem; font-weight: 600; color: #e8e8ec; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; font-weight: 600; color: #e8e8ec; margin-top: 28px; }
+  .sub { color: #9a9aa2; margin: 0 0 16px; }
+  canvas { display: block; width: 100%; background: #000;
+           border: 1px solid #26262c; border-radius: 4px; outline: none; }
+  canvas:focus { border-color: #4a6a8a; }
+  .controls { color: #9a9aa2; margin-top: 10px; }
+  kbd { background: #1c1c22; border: 1px solid #33333a; border-radius: 3px;
+        padding: 0 5px; font-family: ui-monospace, "Cascadia Mono", monospace; }
+  .boundary { border-left: 3px solid #33333a; padding-left: 14px; color: #a8a8b0; }
+  a { color: #7aa2c4; }
+</style>
+</head>
+<body>
+<main>
+  <h1>cube</h1>
+  <p class="sub">The OpenGL-Renderer demo, compiled to WebAssembly —
+  single-threaded and browser-paced, on purpose.</p>
+
+  <canvas id="canvas" tabindex="0"></canvas>
+  <p class="controls">Click the cube to give it keyboard focus, then:
+    <kbd>Space</kbd> pauses the spin &nbsp;·&nbsp;
+    <kbd>←</kbd> <kbd>→</kbd> yaw &nbsp;·&nbsp;
+    <kbd>↑</kbd> <kbd>↓</kbd> pitch.</p>
+
+  <h2>What you are not seeing</h2>
+  <p class="boundary">
+    This build deliberately removes the two systems the project is actually
+    about. The <strong>frame pacer</strong> is meaningless in a browser:
+    there is no high-resolution sleep, busy-spinning the main thread would
+    freeze the page, <code>requestAnimationFrame</code> owns the frame
+    clock, and <code>performance.now()</code> is coarsened to ~100&nbsp;µs
+    without cross-origin isolation — the native build's headline
+    &lt;200&nbsp;µs pacing result cannot even be <em>measured</em> here. The
+    <strong>threaded render</strong> does not port either: Emscripten's
+    offscreen-canvas paths (<code>OFFSCREEN_FRAMEBUFFER</code> /
+    <code>OFFSCREENCANVAS_SUPPORT</code>) only support HTML5-API or SDL2
+    contexts, not GLFW — so there is no render thread, by decision rather
+    than omission. What remains is the shared GL scene on one thread, paced
+    by the browser.
+  </p>
+  <p>The pacer benchmarks, the input-handoff benchmarks, and the threaded
+  architecture live in the native build:
+  <a href="https://github.com/tiffany-mares/OpenGL-Renderer">source and full
+  writeup on GitHub</a>.</p>
+</main>
+<script>
+  var canvas = document.getElementById('canvas');
+  canvas.addEventListener('click', function () { canvas.focus(); });
+  window.addEventListener('keydown', function (e) { if (document.activeElement === canvas && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].indexOf(e.key) >= 0) e.preventDefault(); });
+  var Module = { canvas: canvas };
+</script>
+<script src="cube.js"></script>
+</body>
+</html>
