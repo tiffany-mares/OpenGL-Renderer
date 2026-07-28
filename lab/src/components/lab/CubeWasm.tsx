@@ -42,14 +42,16 @@ export function CubeWasm() {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || booted) return;
-    booted = true;
+    if (!canvas) return;
 
-    window.Module = { canvas, onAbort: () => setFailed(true) };
-    const script = document.createElement("script");
-    script.src = "/cube.js";
-    script.onerror = () => setFailed(true);
-    document.body.appendChild(script);
+    if (!booted) {
+      booted = true;
+      window.Module = { canvas, onAbort: () => setFailed(true) };
+      const script = document.createElement("script");
+      script.src = "/cube.js";
+      script.onerror = () => setFailed(true);
+      document.body.appendChild(script);
+    }
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (
