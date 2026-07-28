@@ -5,6 +5,10 @@ A C++20 threaded OpenGL renderer whose real subject is three systems problems
 frame pacing on general-purpose OSes; the rotating cube is the demo, not the
 point.
 
+**[Live web demo](https://tiffany-mares.github.io/OpenGL-Renderer/)** — a
+single-threaded, browser-paced Emscripten build; the pacer and the threaded
+render deliberately do not port, and the page says why.
+
 ![The demo: a flat-shaded cube rotating one full turn, captured in-app at a paced 50 fps](docs/cube.gif)
 
 *Captured by the app itself (`--capture`: glReadPixels into a preallocated
@@ -295,6 +299,19 @@ Python is **not** required to build or run anything. Two scripts have
 dev-only dependencies, never installed in CI: `bench/plot_frames.py`
 (matplotlib) and `bench/make_gif.py` (Pillow). Everything else under
 `bench/` is stdlib-only.
+
+### The browser build
+
+The live demo is the same three translation units compiled with Emscripten
+(`__EMSCRIPTEN__` guards select a single-threaded path: no render thread, no
+pacer — `requestAnimationFrame` owns the frame clock, and the page explains
+why that boundary exists). Build it locally with an activated emsdk:
+
+    python web/build.py --out dist
+    python -m http.server 8000 -d dist
+
+Deployed automatically to GitHub Pages by `.github/workflows/pages.yml` on
+every push to main, with emsdk pinned to the version recorded there.
 
 ### CLI reference
 
