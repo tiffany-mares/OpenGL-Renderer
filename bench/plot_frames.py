@@ -100,12 +100,14 @@ def fig_histogram(raw: Path, out_path: Path, footer: str) -> None:
 
     fig, ax = plt.subplots(figsize=(7.5, 4.3), dpi=160)
     n = 0
+    ns = []
     overflow_notes = []
     direct_labels = []  # (short_name, anchor_x_ms, height_frac)
     for name, label, short, color in series:
         starts = load_starts(raw, name)
         deltas = sorted((b - a) / 1e6 for a, b in zip(starts, starts[1:]))
         n = len(deltas)
+        ns.append(n)
         p50, p99 = percentile(deltas, 0.50), percentile(deltas, 0.99)
         overflow = sum(1 for d in deltas if d > HIST_XMAX_MS)
         print(f"hist {name}: n={n} p50={p50:.3f}ms p99={p99:.3f}ms "
@@ -125,6 +127,10 @@ def fig_histogram(raw: Path, out_path: Path, footer: str) -> None:
             direct_labels.append((short, min(p99 + 0.3, HIST_XMAX_MS - 0.5), 0.68))
         else:  # sleep_for: label rides the tick-wake cluster
             direct_labels.append((short, min(p99, HIST_XMAX_MS - 1.0), 0.80))
+
+    if len(set(ns)) != 1:
+        sys.exit(f"FATAL: series have mismatched interval counts {ns} -- "
+                 f"expected identical n across all three histogram cells")
 
     ax.set_yscale("log")
     ax.set_ylim(bottom=0.8)
@@ -146,8 +152,8 @@ def fig_histogram(raw: Path, out_path: Path, footer: str) -> None:
 
     ax.set_xlabel("frame start-to-start interval (ms)")
     ax.set_ylabel("frames (log scale)")
-    ax.set_title(f"Frame-time distribution at 144 Hz — {n:,} frames per "
-                 f"strategy, 500-frame warmup dropped",
+    ax.set_title(f"Frame-time distribution at 144 Hz — {n:,} intervals per "
+                 f"strategy,\n500-frame warmup dropped",
                  fontsize=11, color=INK)
     handles, labels = ax.get_legend_handles_labels()
     order = [2, 1, 0]  # hero (timer_spin) first in the legend
@@ -181,8 +187,8 @@ def fig_drift(raw: Path, out_path: Path, footer: str) -> None:
 
     ax.set_xlabel("seconds since first measured frame")
     ax.set_ylabel("drift from ideal 6.944 ms grid (ms)")
-    ax.set_title("Schedule drift over 60 s at 144 Hz — high-res timer, "
-                 "absolute vs relative rescheduling",
+    ax.set_title("Schedule drift over 8,640 frames (60 s of schedule) at "
+                 "144 Hz —\nhigh-res timer, absolute vs relative rescheduling",
                  fontsize=11, color=INK)
     ax.legend(loc="upper left", frameon=False, fontsize=8.5)
     style_axes(ax)

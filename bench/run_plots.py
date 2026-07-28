@@ -13,6 +13,7 @@ disk if the plot step fails.
 tails are noise.
 """
 import argparse
+import re
 import subprocess
 import sys
 import time
@@ -21,9 +22,14 @@ from pathlib import Path
 HIST_STRATEGIES = ["sleep", "timer", "timer_spin"]
 DRIFT_POLICIES = ["absolute", "relative"]
 RUN_TIMEOUT_S = 300  # slowest cell is hist-sleep (~90 s); drift-relative ~74 s
+BENCH_RE = re.compile(r"bench: frames=(\d+)")
 
 
-def run_cell(name: str, cmd: list, out: Path) -> None:
+def run_cell(name: str, cmd: list, out: Path, expected_frames: int) -> None:
+    csv_path = out / f"{name}.csv"
+    if csv_path.exists():
+        sys.exit(f"FATAL: {name}.csv already exists in {out} -- refusing to "
+                  f"overwrite prior run data")
     txt_path = out / f"{name}.txt"
     print(f"[{name}] {' '.join(cmd)}", flush=True)
     with open(txt_path, "w") as txt:
@@ -31,6 +37,18 @@ def run_cell(name: str, cmd: list, out: Path) -> None:
                                 timeout=RUN_TIMEOUT_S)
     if result.returncode != 0:
         sys.exit(f"FATAL: {name} exited {result.returncode}; see {txt_path}")
+    # cube exits 0 when its window closes mid-bench, so a nonzero returncode
+    # alone can't catch a truncated run -- confirm the bench: line is present
+    # AND its frame count matches what we asked for.
+    text = txt_path.read_text()
+    m = BENCH_RE.search(text)
+    if not m:
+        sys.exit(f"FATAL: {name} produced no bench: line -- run truncated? "
+                  f"see {txt_path}")
+    actual_frames = int(m.group(1))
+    if actual_frames != expected_frames:
+        sys.exit(f"FATAL: {name} reported frames={actual_frames}, expected "
+                  f"{expected_frames} -- run truncated? see {txt_path}")
 
 
 def main() -> None:
@@ -55,14 +73,14 @@ def main() -> None:
         name = f"hist-{strategy}-144"
         run_cell(name, [args.exe, "--fps=144", f"--pace={strategy}",
                         f"--bench-frames={args.hist_frames}",
-                        f"--log={out / (name + '.csv')}"], out)
+                        f"--log={out / (name + '.csv')}"], out, args.hist_frames)
 
     for policy in DRIFT_POLICIES:
         name = f"drift-{policy}-144"
         run_cell(name, [args.exe, "--fps=144", "--pace=timer",
                         f"--resched={policy}",
                         f"--bench-frames={args.drift_frames}",
-                        f"--log={out / (name + '.csv')}"], out)
+                        f"--log={out / (name + '.csv')}"], out, args.drift_frames)
 
     print(f"raw results in {out}", flush=True)
     if not args.no_plot:

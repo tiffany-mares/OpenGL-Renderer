@@ -6,15 +6,16 @@ pacing on general-purpose OSes. The rotating cube is the demo, not the point.
 
 ![Histogram of 144 Hz frame start-to-start intervals, log count axis: the shipping timer-plus-spin pacer is a single spike at the 6.944 ms period, a bare high-res timer smears slightly around it, and naive sleep_for never lands near the period at all](docs/plots/frametime-hist-144.png)
 
-*Start-to-start frame intervals at 144 Hz (9,500 measured frames per strategy,
-log count axis). The shipping `timer_spin` pacer puts essentially every frame
-in one 50 µs bin at the 6.944 ms period. A bare high-res timer holds the
-schedule on average but hands its OS wake jitter straight to the frame times
-(p99 8.874 ms). Naive `sleep_for` never delivers a frame near the period: on
-this machine its ~7 ms sleep requests wake on the ~15.6 ms scheduler tick, so
-it alternates ~16 ms frames with immediate post-miss frames — the two
-clusters. (That same mechanism is what produces the classic comb at 15.6 ms
-multiples on stock Windows.)*
+*Start-to-start frame intervals at 144 Hz (9,499 measured intervals per
+strategy, log count axis). The shipping `timer_spin` pacer puts ≈90% of
+frames in a single 50 µs bin at the 6.944 ms period (the next-largest bin is
+far smaller). A bare high-res timer holds the schedule on average but hands
+its OS wake jitter straight to the frame times (p99 8.874 ms). Naive
+`sleep_for` never delivers a frame near the period: on this machine its ~7 ms
+sleep requests wake on the ~15.6 ms scheduler tick, so it alternates ~15 ms
+frames with immediate post-miss frames — the two clusters. (That same
+mechanism is what produces the classic comb at 15.6 ms multiples on stock
+Windows.)*
 
 ![Schedule drift over 60 seconds at 144 Hz: absolute-deadline rescheduling stays flat at zero while relative rescheduling falls linearly behind](docs/plots/drift-60s.png)
 
@@ -23,7 +24,9 @@ runs (high-res timer, 144 Hz, 8,640 measured frames), only the rescheduling
 rule differs. The absolute schedule ends 0.3 ms from ideal after 60 seconds;
 the relative one leaks every frame's work time and wake latency into the
 schedule permanently — about 0.66 ms per frame, 5.7 s behind after a minute,
-while reporting zero missed deadlines the whole way.*
+while reporting zero missed deadlines the whole way. The relative run's
+schedule stretched enough that delivering those 60 seconds' worth of frames
+took ~65.7 s of wall time.*
 
 Regenerate both: `python bench/run_plots.py` (~7 minutes of measured runs; AC
 power, machine otherwise idle), which chains into `bench/plot_frames.py` — the
