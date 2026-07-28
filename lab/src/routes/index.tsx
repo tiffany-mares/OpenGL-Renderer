@@ -47,7 +47,7 @@ export const Route = createFileRoute("/")({
           "A lab writeup: real pacing and input-handoff measurements from a threaded OpenGL renderer, with the CPU cost stated plainly.",
       },
       { property: "og:type", content: "article" },
-      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: Index,

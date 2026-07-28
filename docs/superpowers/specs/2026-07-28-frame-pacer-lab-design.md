@@ -128,7 +128,7 @@ generated JSON:
   comparison line.
 - `histogram(hz, platform)` → real bins in ms from the generated JSON, aggregated 50 µs → 0.25 ms
   display bins (5:1), returning `{ms, naive, tuned}[]` like today. X-axis capped at 20 ms with
-  an overflow note listing out-of-range mass (e.g. windows-latest sleep-240 max 44.4 ms,
+  an overflow note listing out-of-range mass (e.g. windows-latest sleep-240 mass beyond the cap,
   desktop timer_spin-60's single 214 ms stall) — same convention as the dashboard's cap.
 - `RESULT_ROWS` / `BASELINE_ROWS` → derived: timer_spin (resp. sleep) rows for all
   3 platforms × 3 rates, columns `p50 / p95 / p99 / max / missed % / CPU %` (the fake

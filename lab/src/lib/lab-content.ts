@@ -114,7 +114,7 @@ export const HANDOFF = {
     `This section is rate-independent — its x-axis IS the publish rate, so the Hz filter above doesn't apply here.`,
   ],
   costNote: `Amortized throughput from 1 M-iteration batches — comparable across backends, not "what one isolated call costs."`,
-  sweepNote: `Reader p99 vs achieved publish rate. Points sit at each run's achieved rate; the unthrottled cells land where each backend actually reached. Below the crossover the mutex's read tail sits at the 100 ns measurement floor.`,
+  sweepNote: `Reader p99 vs achieved publish rate. Points sit at each run's achieved rate; the unthrottled cells land where each backend actually reached. Low-rate read tails sit at each machine's clock measurement floor — 100 ns on the Windows machines, 50 ns on the Ubuntu runner.`,
   sweepCrossover: `≈100 k/s — the crossover`,
   appNote: `In-app end-to-end latency (consume time − publish timestamp), desktop run of record. The bitmask cannot carry the timestamp — 32 bits of keys is all it holds — so its latency is unmeasurable by construction: the Phase-4 asymmetry made visible. App cells are a desktop protocol; CI runs measure only the micro-benchmark.`,
 };
