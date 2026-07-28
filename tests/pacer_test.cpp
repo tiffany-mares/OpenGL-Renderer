@@ -98,10 +98,71 @@ static void pace_strategy_suite() {
     expect(!parse_pace_strategy("", s), "reject empty");
 }
 
+static void relative_schedule_suite() {
+    std::fprintf(stderr, "-- relative schedule\n");
+    // Relative mode: next = now + period — the classic bug, kept measurable.
+    FrameSchedule s(100, 1000, ReschedulePolicy::Relative);
+    PaceDecision d = s.advance(1000);
+    expect(d.deadline_ns == 1100 && !d.missed, "relative first deadline = now + period");
+    // Woken 5 late: absolute would still target 1200; relative slips to 1205.
+    d = s.advance(1105);
+    expect(d.deadline_ns == 1205 && !d.missed, "relative reschedules from now (drift +5)");
+    // Late again: drift ACCUMULATES — 1310 vs the absolute grid's 1300.
+    d = s.advance(1210);
+    expect(d.deadline_ns == 1310 && !d.missed, "relative drift accumulates (+10)");
+    // Grossly late (absolute would flag a miss and resync): relative absorbs
+    // it silently — no miss flag, no miss count, deadline = now + period.
+    d = s.advance(1500);
+    expect(d.deadline_ns == 1600 && !d.missed, "relative absorbs gross lateness, never misses");
+    expect(s.missed() == 0, "relative missed() stays 0 by construction");
+
+    // Drift compounds linearly: ten wakes each 7 late end 9*7 ns behind the
+    // pure-period ladder (first advance is on time; drift starts at wake 2).
+    uint64_t now = 1000;
+    FrameSchedule r(100, now, ReschedulePolicy::Relative);
+    uint64_t deadline = 0;
+    for (int i = 0; i < 10; ++i) {
+        deadline = r.advance(now).deadline_ns;
+        now = deadline + 7;  // simulate a constant 7 ns late wake
+    }
+    expect(deadline == 1000 + 10 * 100 + 9 * 7, "ten late wakes drift 7 ns each");
+    expect(r.missed() == 0, "no misses across the drifting run");
+}
+
+static void resched_default_suite() {
+    std::fprintf(stderr, "-- resched default regression\n");
+    // The 2-arg ctor and explicit Absolute must be indistinguishable — the
+    // absolute path is the 6b/6c baseline of record and must not move.
+    FrameSchedule a(100, 1000);
+    FrameSchedule b(100, 1000, ReschedulePolicy::Absolute);
+    for (uint64_t now : {1000ull, 1105ull, 1203ull, 1450ull, 1455ull, 2100ull}) {
+        const PaceDecision da = a.advance(now);
+        const PaceDecision db = b.advance(now);
+        expect(da.deadline_ns == db.deadline_ns && da.missed == db.missed,
+               "explicit Absolute matches defaulted ctor");
+    }
+    expect(a.missed() == b.missed() && a.missed() == 2, "miss counts match (2 each)");
+}
+
+static void resched_parse_suite() {
+    std::fprintf(stderr, "-- resched policy parsing\n");
+    ReschedulePolicy p = ReschedulePolicy::Absolute;
+    expect(parse_resched_policy("relative", p) && p == ReschedulePolicy::Relative, "parse relative");
+    expect(parse_resched_policy("absolute", p) && p == ReschedulePolicy::Absolute, "parse absolute");
+    p = ReschedulePolicy::Relative;
+    expect(!parse_resched_policy("Absolute", p) && p == ReschedulePolicy::Relative,
+           "case-sensitive, out untouched on failure");
+    expect(!parse_resched_policy("", p), "reject empty");
+    expect(!parse_resched_policy("now+period", p), "reject junk");
+}
+
 int main() {
     welford_suite();
     schedule_suite();
     pace_strategy_suite();
+    relative_schedule_suite();
+    resched_default_suite();
+    resched_parse_suite();
     if (g_failures) {
         std::fprintf(stderr, "%d failure(s)\n", g_failures);
         return 1;

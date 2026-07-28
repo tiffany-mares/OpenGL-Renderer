@@ -13,6 +13,7 @@ class FramebufferSize;
 struct RenderConfig {
     uint32_t fps_cap = 0;                            // 0 = uncapped
     PaceStrategy pace = PaceStrategy::TimerSpin;     // used only when fps_cap > 0
+    ReschedulePolicy resched = ReschedulePolicy::Absolute;  // Phase 6d drift figure
     const char* log_path = nullptr;                  // per-run CSV; null = no logging
     uint64_t bench_frames = 0;                       // >0: run exactly N frames, then exit
 };

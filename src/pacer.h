@@ -40,6 +40,25 @@ struct PaceDecision {
     bool missed;           // deadline already passed: no sleep, no spin
 };
 
+// Phase 6d: how the schedule picks the next deadline. Absolute is the
+// shipping policy and the project's whole thesis (next += period: a hiccup
+// stays local). Relative is the classic bug (next = now + period: every late
+// wake and every microsecond of frame work slips the schedule permanently) —
+// implemented only so the drift figure can MEASURE the difference instead of
+// asserting it.
+enum class ReschedulePolicy {
+    Absolute,  // next += period; misses counted and resynced
+    Relative,  // next = now + period; drift accumulates, misses cannot exist
+};
+
+// Flag-string parser for --resched. On failure returns false and leaves
+// `out` untouched (mirrors parse_pace_strategy).
+inline bool parse_resched_policy(std::string_view name, ReschedulePolicy& out) {
+    if (name == "absolute") { out = ReschedulePolicy::Absolute; return true; }
+    if (name == "relative") { out = ReschedulePolicy::Relative; return true; }
+    return false;
+}
+
 // Absolute-deadline schedule: next += period, never now + period — otherwise
 // one slow frame permanently shifts every frame after it. A miss is counted
 // and the schedule re-anchored at `now` (the late frame starts immediately;
@@ -47,10 +66,22 @@ struct PaceDecision {
 // dropped, never chased with a burst of short frames.
 class FrameSchedule {
 public:
-    FrameSchedule(uint64_t period_ns, uint64_t start_ns)
-        : period_(period_ns), next_(start_ns) {}
+    FrameSchedule(uint64_t period_ns, uint64_t start_ns,
+                  ReschedulePolicy policy = ReschedulePolicy::Absolute)
+        : period_(period_ns), next_(start_ns), policy_(policy) {}
 
     PaceDecision advance(uint64_t now_ns) {
+        if (policy_ == ReschedulePolicy::Relative) {
+            // The bug under measurement: rescheduling from `now` makes the
+            // next deadline unconditionally reachable, so a relative schedule
+            // can never miss — there is no fixed grid to miss against, and
+            // missed_ stays 0 by construction. Lateness that absolute mode
+            // would count and resync is silently absorbed as permanent drift.
+            // "Zero missed deadlines, unboundedly late" is the relative
+            // pacer's signature; the Phase 6d drift figure plots it.
+            next_ = now_ns + period_;
+            return {next_, false};
+        }
         next_ += period_;
         if (now_ns >= next_) {
             ++missed_;
@@ -67,6 +98,7 @@ private:
     uint64_t period_;
     uint64_t next_;
     uint64_t missed_ = 0;
+    ReschedulePolicy policy_ = ReschedulePolicy::Absolute;
 };
 
 // What one wait() did — the raw material for the Phase 6 frame log. The
@@ -118,7 +150,8 @@ uint64_t pacer_now_ns();
 class FramePacer {
 public:
     explicit FramePacer(uint64_t period_ns,
-                        PaceStrategy strategy = PaceStrategy::TimerSpin);
+                        PaceStrategy strategy = PaceStrategy::TimerSpin,
+                        ReschedulePolicy resched = ReschedulePolicy::Absolute);
     ~FramePacer();
     FramePacer(const FramePacer&) = delete;
     FramePacer& operator=(const FramePacer&) = delete;

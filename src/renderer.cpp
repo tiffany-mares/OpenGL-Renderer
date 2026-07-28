@@ -170,7 +170,8 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
     // waitable-timer handle, and wait() must run where the frames run.
     std::unique_ptr<FramePacer> pacer;
     if (cfg.fps_cap > 0)
-        pacer = std::make_unique<FramePacer>(1'000'000'000ull / cfg.fps_cap, cfg.pace);
+        pacer = std::make_unique<FramePacer>(1'000'000'000ull / cfg.fps_cap,
+                                             cfg.pace, cfg.resched);
     uint64_t frames = 0;
     const double t_start = glfwGetTime();
 

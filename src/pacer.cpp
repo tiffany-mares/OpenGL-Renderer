@@ -29,8 +29,9 @@ uint64_t pacer_now_ns() {
     return sec * 1'000'000'000ull + rem * 1'000'000'000ull / freq;
 }
 
-FramePacer::FramePacer(uint64_t period_ns, PaceStrategy strategy)
-    : sched_(period_ns, pacer_now_ns()), strategy_(strategy) {
+FramePacer::FramePacer(uint64_t period_ns, PaceStrategy strategy,
+                       ReschedulePolicy resched)
+    : sched_(period_ns, pacer_now_ns(), resched), strategy_(strategy) {
     // High-resolution waitable timer (Windows 10 1803+): wakes within tens
     // of microseconds instead of on the scheduler tick.
     HANDLE t = CreateWaitableTimerExW(nullptr, nullptr,
@@ -147,8 +148,9 @@ uint64_t pacer_now_ns() {
     return t / tb.denom * tb.numer + t % tb.denom * tb.numer / tb.denom;
 }
 
-FramePacer::FramePacer(uint64_t period_ns, PaceStrategy strategy)
-    : sched_(period_ns, pacer_now_ns()), strategy_(strategy) {}
+FramePacer::FramePacer(uint64_t period_ns, PaceStrategy strategy,
+                       ReschedulePolicy resched)
+    : sched_(period_ns, pacer_now_ns(), resched), strategy_(strategy) {}
 
 FramePacer::~FramePacer() = default;
 
@@ -182,8 +184,9 @@ uint64_t pacer_now_ns() {
            static_cast<uint64_t>(ts.tv_nsec);
 }
 
-FramePacer::FramePacer(uint64_t period_ns, PaceStrategy strategy)
-    : sched_(period_ns, pacer_now_ns()), strategy_(strategy) {}
+FramePacer::FramePacer(uint64_t period_ns, PaceStrategy strategy,
+                       ReschedulePolicy resched)
+    : sched_(period_ns, pacer_now_ns(), resched), strategy_(strategy) {}
 
 FramePacer::~FramePacer() = default;
 

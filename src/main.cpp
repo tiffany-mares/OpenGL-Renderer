@@ -23,6 +23,8 @@ int main(int argc, char** argv) {
     const char* log_path = nullptr;  // Phase 6a: per-run CSV (requires a paced run)
     PaceStrategy pace = PaceStrategy::TimerSpin;  // the shipping default
     bool pace_given = false;
+    ReschedulePolicy resched = ReschedulePolicy::Absolute;  // Phase 6d drift figure
+    bool resched_given = false;
     uint64_t bench_frames = 0;  // 0 = interactive run
     uint32_t poll_hz = 1000;  // Phase 6c: the poll loop is properly paced by default
     for (int i = 1; i < argc; ++i) {
@@ -51,6 +53,13 @@ int main(int argc, char** argv) {
                 return EXIT_FAILURE;
             }
             pace_given = true;
+        } else if (arg.rfind("--resched=", 0) == 0 || (arg == "--resched" && i + 1 < argc)) {
+            const char* v = (arg == "--resched") ? argv[++i] : argv[i] + 10;
+            if (!parse_resched_policy(v, resched)) {
+                std::fprintf(stderr, "bad --resched value '%s' (absolute|relative)\n", v);
+                return EXIT_FAILURE;
+            }
+            resched_given = true;
         } else if (arg.rfind("--bench-frames=", 0) == 0 ||
                    (arg == "--bench-frames" && i + 1 < argc)) {
             const char* v = (arg == "--bench-frames") ? argv[++i] : argv[i] + 15;
@@ -75,7 +84,8 @@ int main(int argc, char** argv) {
         } else {
             std::fprintf(stderr,
                          "usage: cube [--input=mutex|bitmask|seqlock] [--fps N] "
-                         "[--pace sleep|timer|timer_spin|spin] [--log PATH] [--bench-frames N] "
+                         "[--pace sleep|timer|timer_spin|spin] [--resched absolute|relative] "
+                         "[--log PATH] [--bench-frames N] "
                          "[--poll-hz N]\n");
             return EXIT_FAILURE;
         }
@@ -88,6 +98,11 @@ int main(int argc, char** argv) {
     }
     if (pace_given && fps == 0) {
         std::fprintf(stderr, "--pace requires --fps (there is nothing to pace uncapped)\n");
+        return EXIT_FAILURE;
+    }
+    if (resched_given && fps == 0) {
+        std::fprintf(stderr,
+                     "--resched requires --fps (there is no schedule to reschedule uncapped)\n");
         return EXIT_FAILURE;
     }
     std::unique_ptr<InputChannel> input = make_input_channel(backend);
@@ -105,6 +120,9 @@ int main(int argc, char** argv) {
                                                                : "timer_spin";
         std::printf("pace strategy: %s\n", pace_name);
     }
+    if (fps > 0)
+        std::printf("resched policy: %s\n",
+                    resched == ReschedulePolicy::Relative ? "relative" : "absolute");
     if (bench_frames > 0)
         std::printf("bench frames: %llu\n", static_cast<unsigned long long>(bench_frames));
     std::printf("poll rate: %u Hz\n", poll_hz);
@@ -145,6 +163,7 @@ int main(int argc, char** argv) {
     RenderConfig cfg;
     cfg.fps_cap = fps;
     cfg.pace = pace;
+    cfg.resched = resched;
     cfg.log_path = log_path;
     cfg.bench_frames = bench_frames;
 

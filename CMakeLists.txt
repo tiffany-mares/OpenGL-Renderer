@@ -66,3 +66,11 @@ add_test(NAME cube_rejects_poll_hz_high COMMAND cube --poll-hz=10001)
 set_tests_properties(cube_rejects_poll_hz_zero cube_rejects_poll_hz_high PROPERTIES
     PASS_REGULAR_EXPRESSION "bad --poll-hz value"
     TIMEOUT 15)
+
+# --resched validation happens before glfwInit, so these run headless (CI-safe).
+add_test(NAME cube_rejects_resched_bogus COMMAND cube --fps=144 --resched=sometimes)
+add_test(NAME cube_rejects_resched_uncapped COMMAND cube --resched=relative)
+set_tests_properties(cube_rejects_resched_bogus PROPERTIES
+    PASS_REGULAR_EXPRESSION "bad --resched value" TIMEOUT 15)
+set_tests_properties(cube_rejects_resched_uncapped PROPERTIES
+    PASS_REGULAR_EXPRESSION "--resched requires --fps" TIMEOUT 15)
