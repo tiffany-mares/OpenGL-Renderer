@@ -34,6 +34,10 @@ public:
     virtual void publish(const InputSnapshot& s) = 0;
     virtual InputSnapshot read() const = 0;
     virtual const char* name() const = 0;
+    // Reader-side retry count since construction. A retry is a read attempt
+    // the backend had to discard and repeat; backends that never retry
+    // return 0. Relaxed counter — a diagnostic, not a synchronization edge.
+    virtual uint64_t read_retries() const { return 0; }
 };
 
 // Baseline: a mutex around a small POD. The thing the other two are
@@ -115,18 +119,27 @@ public:
     InputSnapshot read() const override {
         for (;;) {
             const uint32_t s0 = seq_.load(std::memory_order_acquire);
-            if (s0 & 1u) continue;                            // writer mid-update
-            InputSnapshot s = payload_;                       // the racy read
+            if (s0 & 1u) {                            // writer mid-update
+                retries_.fetch_add(1, std::memory_order_relaxed);
+                continue;
+            }
+            InputSnapshot s = payload_;               // the racy read
             std::atomic_thread_fence(std::memory_order_acquire);  // copy before recheck
             if (seq_.load(std::memory_order_relaxed) == s0) return s;
+            retries_.fetch_add(1, std::memory_order_relaxed);  // torn copy discarded
         }
     }
 
     const char* name() const override { return "seqlock"; }
 
+    uint64_t read_retries() const override {
+        return retries_.load(std::memory_order_relaxed);
+    }
+
 private:
     std::atomic<uint32_t> seq_{0};
     InputSnapshot payload_;
+    mutable std::atomic<uint64_t> retries_{0};  // reader-written only; incremented only on the retry paths, never on a clean read
 };
 
 // Framebuffer size, published by the main thread (GLFW size queries are

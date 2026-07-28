@@ -79,6 +79,9 @@ static void seqlock_stress() {
         }
         done.store(true);
     });
+    const uint64_t r0 = ch.read_retries();
+    uint64_t last = r0;
+    uint64_t read_count = 0;
     while (!done.load()) {
         InputSnapshot r = ch.read();
         const bool consistent =
@@ -87,8 +90,38 @@ static void seqlock_stress() {
             r.mouse_dy == -static_cast<float>(r.keys & 0xFFFF);
         expect(consistent, "seqlock stress: torn snapshot");
         if (g_failures > 20) break;  // don't flood stderr if it's broken
+        ++read_count;
+        if (read_count % 1000 == 0) {
+            expect(ch.read_retries() >= last, "retry counter is monotone");
+            last = ch.read_retries();
+        }
     }
     writer.join();
+    std::printf("seqlock stress: %llu reader retries observed\n",
+                static_cast<unsigned long long>(ch.read_retries() - r0));
+}
+
+static void retry_counter() {
+    // Base default: backends without retries report 0 through the interface.
+    for (const char* name : {"mutex", "bitmask"}) {
+        auto ch = make_input_channel(name);
+        InputSnapshot s;
+        s.keys = 7u;
+        ch->publish(s);
+        (void)ch->read();
+        expect(ch->read_retries() == 0, "non-seqlock backend reports read_retries 0");
+    }
+
+    // Seqlock: zero on construction, and — load-bearing — zero after many
+    // uncontended reads: the clean-read fast path must never touch the counter.
+    SeqlockChannel ch;
+    expect(ch.read_retries() == 0, "fresh seqlock has 0 retries");
+    InputSnapshot s;
+    s.keys = 42u;
+    s.publish_ns = 1000003ull;
+    ch.publish(s);
+    for (int i = 0; i < 1000; ++i) (void)ch.read();
+    expect(ch.read_retries() == 0, "uncontended reads never increment retries");
 }
 
 int main() {
@@ -106,6 +139,8 @@ int main() {
         expect(std::string_view(ch.name()) == "seqlock", "seqlock name");
         seqlock_stress();
     }
+
+    retry_counter();
 
     {
         FramebufferSize fb;
