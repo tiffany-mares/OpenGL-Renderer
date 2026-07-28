@@ -16,6 +16,8 @@ struct RenderConfig {
     ReschedulePolicy resched = ReschedulePolicy::Absolute;  // Phase 6d drift figure
     const char* log_path = nullptr;                  // per-run CSV; null = no logging
     uint64_t bench_frames = 0;                       // >0: run exactly N frames, then exit
+    const char* capture_path = nullptr;              // Phase 7: raw RGB frames; null = no capture
+    uint32_t capture_frames = 0;                     // >0: capture exactly N frames, then exit
 };
 
 // Body of the render thread. Owns the GL context and every GL object:

@@ -74,3 +74,23 @@ set_tests_properties(cube_rejects_resched_bogus PROPERTIES
     PASS_REGULAR_EXPRESSION "bad --resched value" TIMEOUT 15)
 set_tests_properties(cube_rejects_resched_uncapped PROPERTIES
     PASS_REGULAR_EXPRESSION "--resched requires --fps" TIMEOUT 15)
+
+add_executable(capture_tests tests/capture_test.cpp)
+target_include_directories(capture_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME capture_tests COMMAND capture_tests)
+
+# --capture validation happens before glfwInit, so these run headless (CI-safe).
+add_test(NAME cube_rejects_capture_frames_zero
+         COMMAND cube --fps=50 --capture=x.raw --capture-frames=0)
+add_test(NAME cube_rejects_capture_frames_high
+         COMMAND cube --fps=50 --capture=x.raw --capture-frames=501)
+set_tests_properties(cube_rejects_capture_frames_zero cube_rejects_capture_frames_high
+    PROPERTIES PASS_REGULAR_EXPRESSION "bad --capture-frames value" TIMEOUT 15)
+add_test(NAME cube_rejects_capture_uncapped
+         COMMAND cube --capture=x.raw --capture-frames=100)
+set_tests_properties(cube_rejects_capture_uncapped PROPERTIES
+    PASS_REGULAR_EXPRESSION "--capture requires --fps" TIMEOUT 15)
+add_test(NAME cube_rejects_capture_orphan_frames
+         COMMAND cube --fps=50 --capture-frames=100)
+set_tests_properties(cube_rejects_capture_orphan_frames PROPERTIES
+    PASS_REGULAR_EXPRESSION "--capture-frames requires --capture" TIMEOUT 15)

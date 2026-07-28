@@ -9,6 +9,7 @@
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
+#include "capture.h"
 #include "frame_log.h"
 #include "input_state.h"
 #include "mat4.h"
@@ -189,6 +190,20 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
     uint64_t prev_deadline_ns = 0;
     uint64_t prev_frame_start_ns = 0;
 
+    // Phase 7: GIF capture. Preallocated before the first frame (FrameLog
+    // discipline); read back pre-swap; file written after the loop. The
+    // framebuffer size comes from the side channel main populated before
+    // this thread started.
+    const bool capturing = cfg.capture_path != nullptr;
+    std::unique_ptr<CaptureBuffer> capture;
+    if (capturing) {
+        int cw = 0, ch = 0;
+        fb.load(cw, ch);
+        capture = std::make_unique<CaptureBuffer>(cfg.capture_frames, cw, ch);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);  // tightly packed rows
+        glReadBuffer(GL_BACK);
+    }
+
     // Phase 6b bench mode: run exactly cfg.bench_frames frames, snapshot this
     // thread's CPU time at the warmup boundary, then request close. CPU% is
     // the honesty column: it prices what each pacing strategy pays for its
@@ -222,7 +237,9 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
         fb.load(fb_w, fb_h);
 
         double now = glfwGetTime();
-        const double dt = now - prev;
+        constexpr double kTwoPi = 6.283185307179586;
+        const double dt = capturing ? kTwoPi / (0.9 * cfg.capture_frames)
+                                    : now - prev;
         if (!(in.keys & kKeySpace)) angle += dt * 0.9;
         constexpr double kManualRate = 2.2;  // rad/s while an arrow is held
         yaw   += dt * kManualRate * (((in.keys & kKeyRight) ? 1 : 0) - ((in.keys & kKeyLeft) ? 1 : 0));
@@ -247,6 +264,13 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
 
         if (logging) g_workload_sink = synthetic_workload(kWorkloadIters);
+
+        if (capturing) {
+            if (uint8_t* dst = capture->next_frame(fb_w, fb_h)) {
+                glReadPixels(0, 0, fb_w, fb_h, GL_RGB, GL_UNSIGNED_BYTE, dst);
+                capture->commit();
+            }
+        }
 
         glfwSwapBuffers(window);  // safe: this thread holds the context
 
@@ -283,6 +307,11 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
                 break;
             }
         }
+
+        if (capturing && capture->done()) {
+            glfwSetWindowShouldClose(window, GLFW_TRUE);  // documented any-thread
+            break;
+        }
     }
 
     // Bench snapshot immediately at loop exit — before the CSV write, so the
@@ -314,6 +343,18 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
             std::printf("frame log: %zu records -> %s (%llu dropped)\n",
                         log.size(), cfg.log_path,
                         static_cast<unsigned long long>(log.dropped()));
+    }
+    if (capturing) {
+        const bool ok = capture->write(cfg.capture_path, cfg.fps_cap);
+        std::printf("capture: path=%s frames=%u requested=%u width=%d height=%d "
+                    "fps=%u bytes=%llu resized=%d missed=%llu\n",
+                    cfg.capture_path, capture->frames(), cfg.capture_frames,
+                    capture->width(), capture->height(), cfg.fps_cap,
+                    static_cast<unsigned long long>(
+                        static_cast<uint64_t>(capture->frames()) * capture->frame_bytes()),
+                    capture->resized() ? 1 : 0,
+                    static_cast<unsigned long long>(pacer ? pacer->missed() : 0));
+        if (!ok) failed.store(true);
     }
 
     // GL teardown on the owning thread, before the main thread joins us.

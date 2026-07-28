@@ -27,6 +27,8 @@ int main(int argc, char** argv) {
     bool resched_given = false;
     uint64_t bench_frames = 0;  // 0 = interactive run
     uint32_t poll_hz = 1000;  // Phase 6c: the poll loop is properly paced by default
+    const char* capture_path = nullptr;  // Phase 7: raw frame dump for the GIF
+    uint32_t capture_frames = 0;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg = argv[i];
         if (arg.rfind("--input=", 0) == 0) {
@@ -81,12 +83,28 @@ int main(int argc, char** argv) {
                 return EXIT_FAILURE;
             }
             poll_hz = static_cast<uint32_t>(parsed);
+        } else if (arg.rfind("--capture=", 0) == 0 || (arg == "--capture" && i + 1 < argc)) {
+            capture_path = (arg == "--capture") ? argv[++i] : argv[i] + 10;
+            if (*capture_path == '\0') {
+                std::fprintf(stderr, "bad --capture value: empty path\n");
+                return EXIT_FAILURE;
+            }
+        } else if (arg.rfind("--capture-frames=", 0) == 0 ||
+                   (arg == "--capture-frames" && i + 1 < argc)) {
+            const char* v = (arg == "--capture-frames") ? argv[++i] : argv[i] + 17;
+            char* end = nullptr;
+            const unsigned long parsed = std::strtoul(v, &end, 10);
+            if (end == v || *end != '\0' || parsed < 1 || parsed > 500) {
+                std::fprintf(stderr, "bad --capture-frames value '%s' (want 1..500)\n", v);
+                return EXIT_FAILURE;
+            }
+            capture_frames = static_cast<uint32_t>(parsed);
         } else {
             std::fprintf(stderr,
                          "usage: cube [--input=mutex|bitmask|seqlock] [--fps N] "
                          "[--pace sleep|timer|timer_spin|spin] [--resched absolute|relative] "
                          "[--log PATH] [--bench-frames N] "
-                         "[--poll-hz N]\n");
+                         "[--poll-hz N] [--capture PATH --capture-frames N]\n");
             return EXIT_FAILURE;
         }
     }
@@ -103,6 +121,19 @@ int main(int argc, char** argv) {
     if (resched_given && fps == 0) {
         std::fprintf(stderr,
                      "--resched requires --fps (there is no schedule to reschedule uncapped)\n");
+        return EXIT_FAILURE;
+    }
+    if (capture_path && fps == 0) {
+        std::fprintf(stderr,
+                     "--capture requires --fps (capture needs a frame clock for GIF timing)\n");
+        return EXIT_FAILURE;
+    }
+    if (capture_path && capture_frames == 0) {
+        std::fprintf(stderr, "--capture requires --capture-frames\n");
+        return EXIT_FAILURE;
+    }
+    if (capture_frames > 0 && !capture_path) {
+        std::fprintf(stderr, "--capture-frames requires --capture\n");
         return EXIT_FAILURE;
     }
     std::unique_ptr<InputChannel> input = make_input_channel(backend);
@@ -126,6 +157,8 @@ int main(int argc, char** argv) {
     if (bench_frames > 0)
         std::printf("bench frames: %llu\n", static_cast<unsigned long long>(bench_frames));
     std::printf("poll rate: %u Hz\n", poll_hz);
+    if (capture_path)
+        std::printf("capture: %s (%u frames)\n", capture_path, capture_frames);
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) {
@@ -166,6 +199,8 @@ int main(int argc, char** argv) {
     cfg.resched = resched;
     cfg.log_path = log_path;
     cfg.bench_frames = bench_frames;
+    cfg.capture_path = capture_path;
+    cfg.capture_frames = capture_frames;
 
     std::thread render_thread(render_thread_main, window, std::cref(*input),
                               std::cref(fb), cfg, std::cref(stop),
