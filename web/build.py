@@ -3,10 +3,11 @@
 
 Compiles the whole app (src/*.cpp) to WebAssembly with Emscripten and stages
 a servable site in --out: cube.js + cube.wasm + the page, dashboard, vendored
-Chart.js, and committed benchmark data. The same three translation units as
-the native build; __EMSCRIPTEN__ guards select the single-threaded browser
-path (no render thread, no pacer in the loop -- requestAnimationFrame owns
-the frame clock). Stdlib-only, like every runner in bench/.
+Chart.js, and committed benchmark data, plus the Cloudflare _headers rules.
+The same three translation units as the native build; __EMSCRIPTEN__ guards
+select the single-threaded browser path (no render thread, no pacer in the
+loop -- requestAnimationFrame owns the frame clock). Stdlib-only, like every
+runner in bench/.
 
 Requires an activated emsdk: emcc must be on PATH (run emsdk_env first).
 """
@@ -77,6 +78,9 @@ def main() -> None:
          out / "data" / "pacing-summary.csv"),
         (root / "bench" / "results" / "2026-07-27-handoff-summary.csv",
          out / "data" / "handoff-summary.csv"),
+        # Phase 8d: Cloudflare Pages header rules (cache + wasm content-type;
+        # commented COOP/COEP hook). Parsed by Cloudflare, never served.
+        (root / "web" / "_headers", out / "_headers"),
     ]
     for src, dst in stage:
         if not src.is_file():
