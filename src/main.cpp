@@ -1,5 +1,4 @@
 #include <atomic>
-#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -25,6 +24,7 @@ int main(int argc, char** argv) {
     PaceStrategy pace = PaceStrategy::TimerSpin;  // the shipping default
     bool pace_given = false;
     uint64_t bench_frames = 0;  // 0 = interactive run
+    uint32_t poll_hz = 1000;  // Phase 6c: the poll loop is properly paced by default
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg = argv[i];
         if (arg.rfind("--input=", 0) == 0) {
@@ -63,10 +63,20 @@ int main(int argc, char** argv) {
                 return EXIT_FAILURE;
             }
             bench_frames = parsed;
+        } else if (arg.rfind("--poll-hz=", 0) == 0 || (arg == "--poll-hz" && i + 1 < argc)) {
+            const char* v = (arg == "--poll-hz") ? argv[++i] : argv[i] + 10;
+            char* end = nullptr;
+            const unsigned long parsed = std::strtoul(v, &end, 10);
+            if (end == v || *end != '\0' || parsed < 1 || parsed > 10000) {
+                std::fprintf(stderr, "bad --poll-hz value '%s' (want 1..10000)\n", v);
+                return EXIT_FAILURE;
+            }
+            poll_hz = static_cast<uint32_t>(parsed);
         } else {
             std::fprintf(stderr,
                          "usage: cube [--input=mutex|bitmask|seqlock] [--fps N] "
-                         "[--pace sleep|timer|timer_spin|spin] [--log PATH] [--bench-frames N]\n");
+                         "[--pace sleep|timer|timer_spin|spin] [--log PATH] [--bench-frames N] "
+                         "[--poll-hz N]\n");
             return EXIT_FAILURE;
         }
     }
@@ -97,6 +107,7 @@ int main(int argc, char** argv) {
     }
     if (bench_frames > 0)
         std::printf("bench frames: %llu\n", static_cast<unsigned long long>(bench_frames));
+    std::printf("poll rate: %u Hz\n", poll_hz);
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) {
@@ -144,6 +155,13 @@ int main(int argc, char** argv) {
     double mx_prev = 0.0, my_prev = 0.0;
     glfwGetCursorPos(window, &mx_prev, &my_prev);
 
+    // Phase 6c: pace the poll loop with the platform timer. sleep_for(1ms)
+    // really wakes at the ~15.6 ms scheduler tick on stock Windows (measured
+    // in 6a) — the app published at ~64 Hz, not the intended ~1 kHz.
+    FramePacer poll_pacer(1'000'000'000ull / poll_hz, PaceStrategy::TimerSpin);
+    uint64_t publishes = 0;
+    const uint64_t poll_start_ns = pacer_now_ns();
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
@@ -174,9 +192,8 @@ int main(int argc, char** argv) {
         s.publish_ns = pacer_now_ns();
         input->publish(s);
 
-        // ~1000 Hz poll cadence. sleep_for's real resolution on stock
-        // Windows is the scheduler tick; the honest pacer is Phase 5.
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        ++publishes;
+        poll_pacer.wait();
     }
 
     // Shutdown ordering: signal, join (render thread deletes its GL objects
@@ -184,6 +201,18 @@ int main(int argc, char** argv) {
     // on this thread, then terminate.
     stop.store(true);
     render_thread.join();
+
+    const uint64_t poll_wall_ns = pacer_now_ns() - poll_start_ns;
+    std::printf("handoff: backend=%s poll_hz=%u publishes=%llu wall_ns=%llu "
+                "achieved_hz=%.1f missed=%llu retries=%llu\n",
+                input->name(), poll_hz,
+                static_cast<unsigned long long>(publishes),
+                static_cast<unsigned long long>(poll_wall_ns),
+                poll_wall_ns ? 1e9 * static_cast<double>(publishes) /
+                               static_cast<double>(poll_wall_ns) : 0.0,
+                static_cast<unsigned long long>(poll_pacer.missed()),
+                static_cast<unsigned long long>(input->read_retries()));
+
     glfwDestroyWindow(window);
     glfwTerminate();
     return render_failed.load() ? EXIT_FAILURE : EXIT_SUCCESS;

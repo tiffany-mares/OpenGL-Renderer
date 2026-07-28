@@ -51,3 +51,10 @@ add_test(NAME pacer_smoke COMMAND pacer_smoke)
 add_executable(frame_log_tests tests/frame_log_test.cpp)
 target_include_directories(frame_log_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME frame_log_tests COMMAND frame_log_tests)
+
+# --poll-hz rejection happens before glfwInit, so these run headless (CI-safe).
+add_test(NAME cube_rejects_poll_hz_zero COMMAND cube --poll-hz=0)
+add_test(NAME cube_rejects_poll_hz_high COMMAND cube --poll-hz=10001)
+set_tests_properties(cube_rejects_poll_hz_zero cube_rejects_poll_hz_high PROPERTIES
+    PASS_REGULAR_EXPRESSION "bad --poll-hz value"
+    TIMEOUT 15)
