@@ -76,6 +76,10 @@ def main():
                   for fr in out_frames]
 
     duration_ms = round(1000 * args.stride / fps)
+    if duration_ms < 20 or duration_ms % 10:
+        sys.exit(f"FATAL: duration_ms={duration_ms} is not a whole >=2 cs GIF frame delay "
+                 "(browsers clamp anything below 2 cs to 10 cs); capture at an fps where "
+                 "1000*stride/fps is a multiple of 10 and >= 20 (e.g. --fps=50 or 25)")
     out_frames[0].save(args.out, save_all=True, append_images=out_frames[1:],
                        duration=duration_ms, loop=0, optimize=True, disposal=1)
     size = os.path.getsize(args.out)

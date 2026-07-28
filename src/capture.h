@@ -52,8 +52,7 @@ public:
         const size_t bytes = static_cast<size_t>(frames_) * frame_bytes();
         const bool data_ok =
             bytes == 0 || std::fwrite(data_.data(), 1, bytes, f) == bytes;
-        std::fclose(f);
-        if (!data_ok) {
+        if (std::fclose(f) != 0 || !data_ok) {
             std::fprintf(stderr, "capture: write error on '%s'\n", path);
             return false;
         }
@@ -70,10 +69,11 @@ public:
                      width_, height_, frames_, max_frames_, fps,
                      resized_ ? "true" : "false");
         const bool meta_ok = std::ferror(m) == 0;
-        std::fclose(m);
-        if (!meta_ok)
+        if (std::fclose(m) != 0 || !meta_ok) {
             std::fprintf(stderr, "capture: write error on '%s'\n", meta_path.c_str());
-        return meta_ok;
+            return false;
+        }
+        return true;
     }
 
 private:
