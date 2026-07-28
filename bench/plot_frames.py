@@ -138,8 +138,11 @@ def fig_histogram(raw: Path, out_path: Path, footer: str) -> None:
         ax.text(x_ms, frac, short, transform=ax.get_xaxis_transform(),
                 ha="center", va="bottom", fontsize=8, color=INK)
     if overflow_notes:
-        ax.text(0.02, 0.02, "\n".join(overflow_notes), transform=ax.transAxes,
-                ha="left", va="bottom", fontsize=7, color=MUTED)
+        # Figure corner, mirroring the provenance footer at bottom-right:
+        # every in-axes spot collides with something (bottom-left drowns in
+        # sleep_for's sub-2 ms cluster, top-left hits the legend and spike).
+        fig.text(0.005, 0.005, "\n".join(overflow_notes),
+                 ha="left", va="bottom", fontsize=7, color=MUTED)
 
     ax.set_xlabel("frame start-to-start interval (ms)")
     ax.set_ylabel("frames (log scale)")
