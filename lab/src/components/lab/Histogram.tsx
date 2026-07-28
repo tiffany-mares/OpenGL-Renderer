@@ -1,26 +1,35 @@
-import { histogram, targetMs, type Hz, type Platform } from "@/lib/lab-data";
+import { histogram, targetMs, HIST_X_MAX_MS, type Hz, type Platform } from "@/lib/lab-data";
 
 const W = 1000;
 const H = 340;
 const PAD = { top: 16, right: 16, bottom: 40, left: 52 };
 
 export function Histogram({ hz, platform }: { hz: Hz; platform: Platform }) {
-  const bins = histogram(hz, platform);
+  const { bins, overflow } = histogram(hz, platform);
   const target = targetMs(hz);
-  const maxMs = 34;
-  const maxCount = 25000;
+  const maxMs = HIST_X_MAX_MS;
+  const maxCount = Math.max(1, ...bins.map((b) => Math.max(b.naive, b.tuned)));
 
   const x = (ms: number) => PAD.left + (ms / maxMs) * (W - PAD.left - PAD.right);
   const y = (c: number) => {
     const v = Math.max(c, 1);
-    const logMax = Math.log10(maxCount);
+    const logMax = Math.log10(maxCount * 1.2);
     return H - PAD.bottom - (Math.log10(v) / logMax) * (H - PAD.top - PAD.bottom);
   };
 
   const barW = Math.max(1.5, x(0.25) - x(0));
+  const yTicks = [1, 10, 100, 1000, 10000].filter((t) => t <= maxCount * 1.2);
+  const xTicks = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 
-  const yTicks = [1, 10, 100, 1000, 10000];
-  const xTicks = [0, 4, 8, 12, 16, 20, 24, 28, 32];
+  const overflowParts: string[] = [];
+  if (overflow.naive.count > 0)
+    overflowParts.push(
+      `naive sleep: ${overflow.naive.count.toLocaleString()} intervals beyond ${maxMs} ms (max ${overflow.naive.maxMs.toFixed(1)} ms)`,
+    );
+  if (overflow.tuned.count > 0)
+    overflowParts.push(
+      `tuned pacer: ${overflow.tuned.count.toLocaleString()} beyond ${maxMs} ms (max ${overflow.tuned.maxMs.toFixed(1)} ms)`,
+    );
 
   return (
     <div>
@@ -52,10 +61,10 @@ export function Histogram({ hz, platform }: { hz: Hz; platform: Platform }) {
         {bins.map((b) => (
           <rect
             key={`n${b.ms}`}
-            x={x(b.ms) - barW / 2}
+            x={x(b.ms)}
             y={y(b.naive)}
             width={barW}
-            height={Math.max(0, H - PAD.bottom - y(b.naive))}
+            height={b.naive > 0 ? Math.max(0, H - PAD.bottom - y(b.naive)) : 0}
             fill="var(--series-naive)"
             opacity={0.75}
           />
@@ -63,10 +72,10 @@ export function Histogram({ hz, platform }: { hz: Hz; platform: Platform }) {
         {bins.map((b) => (
           <rect
             key={`t${b.ms}`}
-            x={x(b.ms) - barW / 2}
+            x={x(b.ms)}
             y={y(b.tuned)}
             width={barW}
-            height={Math.max(0, H - PAD.bottom - y(b.tuned))}
+            height={b.tuned > 0 ? Math.max(0, H - PAD.bottom - y(b.tuned)) : 0}
             fill="var(--series-tuned)"
           />
         ))}
@@ -117,15 +126,20 @@ export function Histogram({ hz, platform }: { hz: Hz; platform: Platform }) {
           fill="var(--muted-foreground)"
           fontSize={11}
         >
-          frame interval (milliseconds)
+          frame interval, start-to-start (milliseconds)
         </text>
       </svg>
 
       <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 font-mono text-xs text-muted-foreground">
-        <Legend color="var(--series-naive)" label="naive sleep baseline" />
-        <Legend color="var(--series-tuned)" label="tuned pacer" />
+        <Legend color="var(--series-naive)" label="naive sleep (--pace=sleep)" />
+        <Legend color="var(--series-tuned)" label="tuned pacer (--pace=timer_spin)" />
         <Legend color="var(--series-target)" label={`target interval (${target.toFixed(2)} ms)`} dashed />
       </div>
+      {overflowParts.length > 0 && (
+        <p className="mt-2 font-mono text-xs text-muted-foreground">
+          off-scale: {overflowParts.join(" · ")}
+        </p>
+      )}
     </div>
   );
 }
