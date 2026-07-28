@@ -6,15 +6,19 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  # Single edit point if the pages.dev name is taken: fallback is
+  # opengl-renderer-cube (both values must change together).
+  CF_PAGES_PROJECT: opengl-renderer
+  CF_PAGES_URL: https://opengl-renderer.pages.dev
+
 jobs:
-  build:
+  deploy-cloudflare:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,20 +28,100 @@ jobs:
           actions-cache-folder: emsdk-cache
       - name: Build wasm site
         run: python web/build.py --out dist
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
+      - name: Preflight -- require Cloudflare secrets
+        env:
+          HAVE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          HAVE_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+        run: |
+          fail=0
+          if [ "$HAVE_TOKEN" != "true" ]; then
+            echo "FATAL: repo secret CLOUDFLARE_API_TOKEN is not set." >&2
+            echo "  Create a Custom API token (permission: Cloudflare Pages -- Edit," >&2
+            echo "  scoped to your account) at https://dash.cloudflare.com/profile/api-tokens" >&2
+            echo "  and add it under repo Settings -> Secrets and variables -> Actions." >&2
+            fail=1
+          fi
+          if [ "$HAVE_ACCOUNT" != "true" ]; then
+            echo "FATAL: repo secret CLOUDFLARE_ACCOUNT_ID is not set." >&2
+            echo "  Copy the Account ID from the Cloudflare dashboard (Workers & Pages" >&2
+            echo "  -> Overview, right sidebar) and add it under repo Settings ->" >&2
+            echo "  Secrets and variables -> Actions." >&2
+            fail=1
+          fi
+          exit $fail
+      - name: Ensure the Pages project exists (idempotent)
+        # Non-interactive `pages deploy` cannot answer wrangler's create-project
+        # prompt, so create explicitly and tolerate only already-exists.
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          out=$(npx wrangler@4.114.0 pages project create "$CF_PAGES_PROJECT" \
+                --production-branch=main 2>&1) && { echo "$out"; exit 0; }
+          echo "$out"
+          if echo "$out" | grep -qi 'already exists'; then
+            echo "project $CF_PAGES_PROJECT exists; continuing"
+            exit 0
+          fi
+          echo "FATAL: could not create Pages project $CF_PAGES_PROJECT" >&2
+          echo "  (if the name is taken globally, switch CF_PAGES_PROJECT/CF_PAGES_URL" >&2
+          echo "  at the top of this workflow to the opengl-renderer-cube fallback)" >&2
+          exit 1
+      - name: Deploy dist to Cloudflare Pages (Direct Upload)
+        id: cf
+        uses: cloudflare/wrangler-action@v3
         with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.114.0"
+          # --branch=main: actions/checkout leaves a detached HEAD, so wrangler
+          # cannot infer the branch; main = production branch = production deploy.
+          # --commit-dirty=true: the emsdk actions-cache folder dirties the tree.
+          command: pages deploy dist --project-name=${{ env.CF_PAGES_PROJECT }} --branch=main --commit-dirty=true
+      - name: Report deployment URL
+        run: echo "deployed ${{ steps.cf.outputs.deployment-url }} (production alias ${{ env.CF_PAGES_URL }})"
 
-  deploy:
-    needs: build
+  # TRANSITION ONLY -- removed by the Phase 8d steady-state commit. Ships the
+  # final GitHub Pages deployment: a redirect page (index.html + 404.html, so
+  # deep links redirect too) and nothing else. Runs only after Cloudflare is
+  # live, so the old URL never redirects into a void. Re-running this job on
+  # later triggers before the steady-state commit lands is idempotent (it
+  # re-deploys the same redirect).
+  redirect-github-pages:
+    needs: deploy-cloudflare
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Write the redirect page
+        run: |
+          mkdir redirect
+          cat > redirect/index.html <<'EOF'
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <title>OpenGL-Renderer has moved</title>
+            <link rel="canonical" href="https://opengl-renderer.pages.dev/">
+            <meta http-equiv="refresh" content="0; url=https://opengl-renderer.pages.dev/">
+            <script>location.replace("https://opengl-renderer.pages.dev/");</script>
+          </head>
+          <body>
+            <p>This site has moved to
+               <a href="https://opengl-renderer.pages.dev/">opengl-renderer.pages.dev</a>.</p>
+          </body>
+          </html>
+          EOF
+          cp redirect/index.html redirect/404.html
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: redirect
       - id: deployment
         uses: actions/deploy-pages@v4
