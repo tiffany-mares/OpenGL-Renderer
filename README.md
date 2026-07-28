@@ -5,9 +5,11 @@ A C++20 threaded OpenGL renderer whose real subject is three systems problems
 frame pacing on general-purpose OSes; the rotating cube is the demo, not the
 point.
 
-**[Live web demo](https://tiffany-mares.github.io/OpenGL-Renderer/)** — a
-single-threaded, browser-paced Emscripten build; the pacer and the threaded
-render deliberately do not port, and the page says why.
+**[Live demo + benchmark dashboard](https://tiffany-mares.github.io/OpenGL-Renderer/)** — the
+cube compiled to WebAssembly as the hook, above a static dashboard of the
+native build's committed benchmark results. The pacer and the threaded render
+deliberately do not port; every number on the page is fetched from files in
+this repo, none re-measured in the browser.
 
 ![The demo: a flat-shaded cube rotating one full turn, captured in-app at a paced 50 fps](docs/cube.gif)
 
@@ -309,6 +311,14 @@ why that boundary exists). Build it locally with an activated emsdk:
 
     python web/build.py --out dist
     python -m http.server 8000 -d dist
+
+The page below the cube is a static dashboard of the committed native
+results: `web/build.py` stages `web/dashboard.js`, a vendored Chart.js
+(`web/vendor/`, pinned like the glad header), `web/data/frametime-hist.json`
+(exported from the pacing run of record by `bench/export_hist.py`), and the
+two committed results CSVs under `dist/data/`. The dashboard fetches its
+data, so previews need the `http.server` above — `file://` will not work.
+Provenance: [bench/results/2026-07-28-web-dashboard.md](bench/results/2026-07-28-web-dashboard.md).
 
 Deployed automatically to GitHub Pages by `.github/workflows/pages.yml` on
 every push to main, with emsdk pinned to the version recorded there.
