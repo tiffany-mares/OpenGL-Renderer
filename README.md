@@ -5,7 +5,7 @@ A C++20 threaded OpenGL renderer whose real subject is three systems problems
 frame pacing on general-purpose OSes; the rotating cube is the demo, not the
 point.
 
-**[Live demo + benchmark dashboard](https://tiffany-mares.github.io/OpenGL-Renderer/)** — the
+**[Live demo + benchmark dashboard](https://opengl-renderer.pages.dev/)** — the
 cube compiled to WebAssembly as the hook, above a static dashboard of the
 native build's committed benchmark results. The pacer and the threaded render
 deliberately do not port; every number on the page is fetched from files in
@@ -320,8 +320,10 @@ two committed results CSVs under `dist/data/`. The dashboard fetches its
 data, so previews need the `http.server` above — `file://` will not work.
 Provenance: [bench/results/2026-07-28-web-dashboard.md](bench/results/2026-07-28-web-dashboard.md).
 
-Deployed automatically to GitHub Pages by `.github/workflows/pages.yml` on
-every push to main, with emsdk pinned to the version recorded there.
+Deployed automatically to Cloudflare Pages (wrangler Direct Upload from
+`.github/workflows/pages.yml`) on every push to main, with emsdk pinned to
+the version recorded there. The original GitHub Pages URL serves a permanent
+redirect here.
 
 The dashboard also carries weekly CI results from windows-latest and
 ubuntu-latest (both Mesa llvmpipe software GL), bot-committed under

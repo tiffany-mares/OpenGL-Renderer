@@ -1,7 +1,7 @@
 # Web benchmark dashboard — 2026-07-28
 
 ## Provenance
-- **Page:** https://tiffany-mares.github.io/OpenGL-Renderer/ — Phase 8b: wasm cube as hook, static dashboard below
+- **Page:** https://opengl-renderer.pages.dev/ (moved from GitHub Pages in Phase 8d; the old URL redirects) — Phase 8b: wasm cube as hook, static dashboard below
 - **Data of record:** bench/results/2026-07-27-summary.csv (pacing, commit `45f87ee`), 2026-07-27-handoff-summary.csv (handoff, commit `008b59a`), web/data/frametime-hist.json (binned from raw dir `bench/results/raw/20260727-210652/`, git-ignored — the exact run the committed pacing tables came from)
 - **Nothing re-measured:** the browser fetches committed files; the WASM build is untouched.
 - This matrix run's `timer_spin-144` concentration (9,361/9,499 ≈ 98.6% in bin 138) differs from the README figure's ≈90% because the figure comes from a separate run (the 6d 5-cell protocol, raw dir `20260728-022118`) — per-run shapes differ, and the dashboard's pacing caption states the run identity so the discrepancy isn't mistaken for an error. Two execution-time deviations from the brief are recorded on the page itself: that run-identity caption sentence, and the histogram overflow note's "(up to X.X ms)" enrichment giving the extent of each panel's out-of-window tail.
