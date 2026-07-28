@@ -1,0 +1,104 @@
+name: bench
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Mondays 09:00 UTC; a full run is ~30 min/OS
+  workflow_dispatch:
+    inputs:
+      frames:
+        description: 'frames per pacing cell (>500; 1000 = pipeline smoke, 10000 = run of record)'
+        required: false
+        default: '10000'
+
+permissions:
+  contents: write   # the commit job pushes the result CSVs
+  actions: write    # the commit job dispatches pages.yml after the push
+
+concurrency:
+  group: bench
+  cancel-in-progress: false
+
+env:
+  MESA_WIN_VERSION: '26.1.3'  # pinned mesa-dist-win release (like glad/Chart.js)
+
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GLFW build deps + Xvfb + Mesa DRI (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xorg-dev libgl1-mesa-dev libwayland-dev libxkbcommon-dev wayland-protocols xvfb libgl1-mesa-dri
+      - name: Fetch pinned mesa-dist-win (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $url = "https://github.com/pal1000/mesa-dist-win/releases/download/$env:MESA_WIN_VERSION/mesa3d-$env:MESA_WIN_VERSION-release-msvc.7z"
+          curl.exe -fsSL -o mesa.7z $url
+          7z x mesa.7z -omesa
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Deploy Mesa opengl32.dll beside cube.exe (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Copy-Item -Path mesa/x64/* -Destination build/Release/ -Recurse -Force
+      - name: Run benchmarks (Windows)
+        if: runner.os == 'Windows'
+        env:
+          GALLIUM_DRIVER: llvmpipe   # deterministic: never the d3d12/WARP path
+        run: python bench/ci_bench.py --platform windows-latest --frames ${{ github.event.inputs.frames || '10000' }}
+      - name: Run benchmarks (Linux)
+        if: runner.os == 'Linux'
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: xvfb-run -a -s "-screen 0 1280x800x24" python3 bench/ci_bench.py --platform ubuntu-latest --frames ${{ github.event.inputs.frames || '10000' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-${{ matrix.os }}
+          path: bench/results/ci/${{ matrix.os }}
+          if-no-files-found: error
+
+  commit:
+    needs: bench
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: bench-windows-latest
+          path: bench/results/ci/windows-latest
+      - uses: actions/download-artifact@v4
+        with:
+          name: bench-ubuntu-latest
+          path: bench/results/ci/ubuntu-latest
+      - name: Commit and push results
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add bench/results/ci
+          if git diff --cached --quiet; then
+            echo 'no data changes; nothing to commit'
+            exit 0
+          fi
+          git commit -m "data: weekly CI benchmark results -- windows-latest + ubuntu-latest (run ${{ github.run_id }})"
+          for i in 1 2 3; do
+            git push && exit 0
+            git pull --rebase
+          done
+          echo 'FATAL: push failed after 3 attempts' >&2
+          exit 1
+      - name: Redeploy the dashboard
+        # GITHUB_TOKEN pushes do NOT fire on:push workflows (GitHub's
+        # recursion guard), so pages.yml must be dispatched explicitly
+        # (workflow_dispatch is exempt).
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run pages.yml --ref main
