@@ -379,6 +379,14 @@ const ACCENTS = {
   3: { bg: "bg-metric-3-tint", fg: "text-metric-3", bar: "bg-metric-3" },
 } as const;
 
+const KEY_ACCENT_CLASSES = {
+  "metric-1": "bg-metric-1-tint text-metric-1",
+  "metric-2": "bg-metric-2-tint text-metric-2",
+  "metric-3": "bg-metric-3-tint text-metric-3",
+  "series-naive": "bg-series-naive-tint text-series-naive",
+  "series-target": "bg-series-target-tint text-series-target",
+} as const;
+
 function Key({
   children,
   accent = "metric-2",
@@ -387,7 +395,7 @@ function Key({
   accent?: "metric-1" | "metric-2" | "metric-3" | "series-naive" | "series-target";
 }) {
   return (
-    <span className={`inline-block rounded px-1 py-0 font-mono text-xs leading-tight bg-${accent}-tint text-${accent}`}>
+    <span className={`inline-block rounded px-1 py-0 font-mono text-xs leading-tight ${KEY_ACCENT_CLASSES[accent]}`}>
       {children}
     </span>
   );
@@ -526,15 +534,11 @@ const KEYWORDS: { term: string; accent: Parameters<typeof Key>[0]["accent"] }[] 
   { term: "undefined behavior", accent: "series-naive" },
   { term: "torn=0", accent: "metric-2" },
   { term: "single-threaded", accent: "metric-2" },
-  { term: "WebGL2", accent: "metric-3" },
-  { term: "native build", accent: "metric-2" },
   { term: "frame pacer", accent: "metric-2" },
   { term: "frame deadline", accent: "metric-3" },
-  { term: "naive sleep loop", accent: "series-naive" },
   { term: "9,500 measured frames", accent: "metric-2" },
   { term: "144 Hz", accent: "metric-1" },
   { term: "AC power", accent: "metric-3" },
-  { term: "OS scheduler", accent: "series-naive" },
 ];
 
 function highlight(text: string): React.ReactNode {
