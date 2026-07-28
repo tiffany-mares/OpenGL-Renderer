@@ -7,6 +7,9 @@ retries/sec from the handoff: lines, (C) the contended sweep. The bitmask
 backend cannot carry publish_ns, so its latency cells are n/a by design.
 percentile() and BENCH_RE are copied from bench/summarize.py (kept standalone
 on purpose -- coupling would put 6b's committed results at risk).
+
+`--micro-only` skips the six GL app cells and emits only tables A and C
+(cost + sweep), for headless CI runners with no GL context.
 """
 import csv
 import re
@@ -71,9 +74,13 @@ def us(ns):
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        sys.exit("usage: summarize_handoff.py RAW_DIR")
-    raw = Path(sys.argv[1])
+    argv = sys.argv[1:]
+    micro_only = "--micro-only" in argv
+    if micro_only:
+        argv = [a for a in argv if a != "--micro-only"]
+    if len(argv) != 1:
+        sys.exit("usage: summarize_handoff.py [--micro-only] RAW_DIR")
+    raw = Path(argv[0])
     bench_txt = (raw / "handoff_bench.txt").read_text()
 
     mclock = CLOCK_RE.search(bench_txt)
@@ -85,8 +92,10 @@ def main() -> None:
     if len(costs) != 6 or not sweeps:
         sys.exit("FATAL: incomplete handoff_cost:/handoff_sweep: lines")
 
-    app = {(b, hz): load_app_cell(raw, b, hz)
-           for b in BACKENDS for hz in POLL_RATES}
+    app = None
+    if not micro_only:
+        app = {(b, hz): load_app_cell(raw, b, hz)
+               for b in BACKENDS for hz in POLL_RATES}
 
     md = ["# Input-handoff benchmark\n",
           f"Raw dir: `{raw}`  \n"
@@ -103,30 +112,34 @@ def main() -> None:
         md.append(f"| {b} | {costs[(b, 'publish')]:.1f} "
                   f"| {costs[(b, 'read')]:.1f} |")
 
-    md.append("\n## B. In-app handoff (144 Hz consumer)\n")
-    md.append("| backend | publish cost ns | read cost ns "
-              "| latency p50/p99 us @1 kHz | latency p50/p99 us @10 kHz "
-              "| retries/sec @1 kHz | retries/sec @10 kHz |")
-    md.append("|---|---|---|---|---|---|---|")
-    for b in BACKENDS:
-        cells = []
-        for hz in POLL_RATES:
-            a = app[(b, hz)]
-            if b == "bitmask":
-                cells.append("n/a")
-            else:
-                cells.append(f"{us(a['lat_p50'])} / {us(a['lat_p99'])}")
-        r1 = app[(b, 1000)]["retries_per_sec"]
-        r10 = app[(b, 10000)]["retries_per_sec"]
-        md.append(f"| {b} | {costs[(b, 'publish')]:.1f} "
-                  f"| {costs[(b, 'read')]:.1f} | {cells[0]} | {cells[1]} "
-                  f"| {r1:.2f} | {r10:.2f} |")
-    md.append("")
-    for b in BACKENDS:
-        for hz in POLL_RATES:
-            a = app[(b, hz)]
-            md.append(f"- {b} @{hz} Hz: achieved_hz={a['achieved_hz']:.1f} "
-                      f"missed={a['missed']} n={a['n']}")
+    if app is not None:
+        md.append("\n## B. In-app handoff (144 Hz consumer)\n")
+        md.append("| backend | publish cost ns | read cost ns "
+                  "| latency p50/p99 us @1 kHz | latency p50/p99 us @10 kHz "
+                  "| retries/sec @1 kHz | retries/sec @10 kHz |")
+        md.append("|---|---|---|---|---|---|---|")
+        for b in BACKENDS:
+            cells = []
+            for hz in POLL_RATES:
+                a = app[(b, hz)]
+                if b == "bitmask":
+                    cells.append("n/a")
+                else:
+                    cells.append(f"{us(a['lat_p50'])} / {us(a['lat_p99'])}")
+            r1 = app[(b, 1000)]["retries_per_sec"]
+            r10 = app[(b, 10000)]["retries_per_sec"]
+            md.append(f"| {b} | {costs[(b, 'publish')]:.1f} "
+                      f"| {costs[(b, 'read')]:.1f} | {cells[0]} | {cells[1]} "
+                      f"| {r1:.2f} | {r10:.2f} |")
+        md.append("")
+        for b in BACKENDS:
+            for hz in POLL_RATES:
+                a = app[(b, hz)]
+                md.append(f"- {b} @{hz} Hz: achieved_hz={a['achieved_hz']:.1f} "
+                          f"missed={a['missed']} n={a['n']}")
+    if app is None:
+        md.append("\nMicro-bench only run (`--micro-only`): the six GL app "
+                  "cells were not run; table B is absent by design.\n")
 
     md.append("\n## C. Contended sweep (tight-loop reader)\n")
     md.append("| backend | target Hz | achieved Hz | read p50 ns | read p99 ns "
@@ -147,14 +160,15 @@ def main() -> None:
         for b in BACKENDS:
             w.writerow(["cost", b, "", f"{costs[(b, 'publish')]:.1f}",
                         f"{costs[(b, 'read')]:.1f}", "", "", "", "", "", ""])
-        for b in BACKENDS:
-            for hz in POLL_RATES:
-                a = app[(b, hz)]
-                lat50 = "" if b == "bitmask" else a["lat_p50"]
-                lat99 = "" if b == "bitmask" else a["lat_p99"]
-                w.writerow(["app", b, hz, "", "", lat50, lat99,
-                            f"{a['retries_per_sec']:.2f}",
-                            f"{a['achieved_hz']:.1f}", "", ""])
+        if app is not None:
+            for b in BACKENDS:
+                for hz in POLL_RATES:
+                    a = app[(b, hz)]
+                    lat50 = "" if b == "bitmask" else a["lat_p50"]
+                    lat99 = "" if b == "bitmask" else a["lat_p99"]
+                    w.writerow(["app", b, hz, "", "", lat50, lat99,
+                                f"{a['retries_per_sec']:.2f}",
+                                f"{a['achieved_hz']:.1f}", "", ""])
         for g in sweeps:
             w.writerow(["sweep", g[0], g[1], "", "", "", "",
                         f"{float(g[9]):.1f}", f"{float(g[2]):.1f}",

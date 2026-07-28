@@ -14,11 +14,13 @@ from pathlib import Path
 STRATEGIES = ["sleep", "timer", "timer_spin", "spin"]
 RATES = [60, 144, 240]
 RUN_TIMEOUT_S = 600  # sleep-60 is the slowest legitimate cell (~167 s + tick slop)
+DEFAULT_EXE = (Path("build") / "Release" / "cube.exe"
+               if sys.platform == "win32" else Path("build") / "cube")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--exe", default=str(Path("build") / "Release" / "cube.exe"),
+    ap.add_argument("--exe", default=str(DEFAULT_EXE),
                     help="path to the cube binary")
     ap.add_argument("--frames", type=int, default=10000,
                     help="frames per run (first 500 are warmup)")

@@ -90,6 +90,16 @@ def main() -> None:
                     help=f"raw pacing-matrix dir (default {DEFAULT_RAW})")
     ap.add_argument("--out", default=None,
                     help="output JSON (default web/data/frametime-hist.json)")
+    ap.add_argument("--summary", default=None,
+                    help=f"summary.csv to cross-check n against "
+                         f"(default {SUMMARY_CSV})")
+    ap.add_argument("--commit", default=None,
+                    help="provenance source_commit (CI runs pass this)")
+    ap.add_argument("--run-date", default=None, help="provenance run_date")
+    ap.add_argument("--machine", default=None,
+                    help="provenance machine string")
+    ap.add_argument("--results-doc", default=None,
+                    help="provenance results_doc path")
     ap.add_argument("--selftest", action="store_true",
                     help="run the synthetic binning check and exit")
     args = ap.parse_args()
@@ -105,7 +115,7 @@ def main() -> None:
         sys.exit(f"FATAL: raw dir {raw} not found -- the run of record is "
                  f"git-ignored; this script runs on the bench machine")
 
-    summary = root / SUMMARY_CSV
+    summary = Path(args.summary) if args.summary else root / SUMMARY_CSV
     if not summary.is_file():
         sys.exit(f"FATAL: {summary} is missing -- nothing to cross-check against")
     with open(summary, newline="") as f:
@@ -132,15 +142,19 @@ def main() -> None:
     if len(interval_ns) != 1:
         sys.exit(f"FATAL: cells have mismatched interval counts {sorted(interval_ns)}")
 
+    fallback = "unspecified (non-default --raw)"
     doc = {
         "provenance": {
             "generated_by": "bench/export_hist.py",
             "raw_dir": raw.name if default_raw else str(raw),
-            "source_commit": SOURCE_COMMIT if default_raw else "unspecified (non-default --raw)",
-            "run_date": RUN_DATE if default_raw else "unspecified (non-default --raw)",
-            "machine": MACHINE if default_raw else "unspecified (non-default --raw)",
+            "source_commit": args.commit or (
+                SOURCE_COMMIT if default_raw else fallback),
+            "run_date": args.run_date or (
+                RUN_DATE if default_raw else fallback),
+            "machine": args.machine or (MACHINE if default_raw else fallback),
             "method": METHOD,
-            "results_doc": "bench/results/2026-07-27-pacing-matrix.md",
+            "results_doc": args.results_doc
+                or "bench/results/2026-07-27-pacing-matrix.md",
         },
         "bin_ns": BIN_NS,
         "cells": cells,
