@@ -241,8 +241,12 @@ if the wasm module errors (e.g. WebGL2 unavailable), never a blank panel.
 
 ## Resolved decisions (with the user, 2026-07-28)
 
-1. **Page role:** the lab page will eventually replace opengl-renderer.pages.dev; the swap
-   itself is a separate later step.
+1. **Page role:** the lab page replaces opengl-renderer.pages.dev. Confirmed as the
+   immediate follow-up step after this one: `pages.yml` gains the lab's Node build (static
+   prerender — Direct Upload serves static files), wrangler deploys the lab output to the
+   same Cloudflare project/URL, `gen-data` runs in that build so weekly CI data refreshes
+   flow onto the page, and `web/index.html`/`dashboard.js` retire. Gated on the user
+   approving the finished page locally first.
 2. **Repo placement:** committed into this repo, renamed `lab/`.
 3. **Branding:** `tiffany-mares / opengl-renderer`; headline keeps the frame-deadline hook.
 4. **Cube:** embed the real wasm build in this step, replacing the decorative wireframe
