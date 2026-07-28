@@ -1,6 +1,7 @@
 #include "pacer.h"
 
 #include <chrono>
+#include <mutex>
 #include <thread>
 
 // ---------------- platform layer: monotonic clock + timed sleep ----------------
@@ -66,16 +67,56 @@ void FramePacer::sleep_until_ns(uint64_t target_ns) {
     }
 }
 
+// GetThreadTimes only updates its FILETIME counters at scheduler-tick
+// boundaries (~15.6 ms on Windows): a thread that does brief bursts of work
+// between longer sleeps reads as either 0 (asleep at every tick) or a full
+// tick quantum (unluckily caught on-CPU at one) -- tick-sampling noise, not a
+// measurement. QueryThreadCycleTime instead reports the CPU's own cycle
+// counter for cycles actually retired while this thread was running, so it
+// has no tick granularity; it just needs converting to nanoseconds.
+static double calibrate_cycles_per_ns() {
+    // Bracket 3 samples of ~8 ms pure busy-spin (never sleeps, so the thread
+    // stays on-CPU for the whole bracket) with QueryThreadCycleTime and
+    // pacer_now_ns reads, and take the ratio of cycle-delta over ns-delta
+    // for each. Use max() of the three, not mean or min: if the scheduler
+    // preempts this thread mid-sample, pacer_now_ns (wall clock) keeps
+    // advancing during the preemption but the thread's cycle counter does
+    // not (it only accumulates cycles retired by this thread), so a
+    // preempted sample's apparent rate reads LOW, never high. The
+    // least-preempted sample therefore has the highest apparent rate and is
+    // the truest one; max() selects it. This is only valid because
+    // invariant-TSC hardware (effectively every x86 CPU shipped this decade)
+    // ticks its cycle counter at a fixed rate regardless of frequency
+    // scaling or C-states, so cycles really are proportional to wall
+    // time-on-CPU and "rate" is a genuine constant to estimate, not a moving
+    // target.
+    constexpr uint64_t kSampleNs = 8'000'000;
+    double best_rate = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        ULONG64 cyc0 = 0, cyc1 = 0;
+        QueryThreadCycleTime(GetCurrentThread(), &cyc0);
+        const uint64_t t0 = pacer_now_ns();
+        while (pacer_now_ns() - t0 < kSampleNs) {
+            // pure busy-spin: keep this thread on-CPU for the whole sample
+        }
+        QueryThreadCycleTime(GetCurrentThread(), &cyc1);
+        const uint64_t dt = pacer_now_ns() - t0;
+        if (dt == 0) continue;
+        const double rate = static_cast<double>(cyc1 - cyc0) / static_cast<double>(dt);
+        if (rate > best_rate) best_rate = rate;
+    }
+    return best_rate;  // cycles per ns; 0.0 if every sample failed
+}
+
 uint64_t thread_cpu_now_ns() {
-    FILETIME creation, exit_time, kernel, user;
-    if (!GetThreadTimes(GetCurrentThread(), &creation, &exit_time, &kernel, &user))
-        return 0;
-    ULARGE_INTEGER k, u;
-    k.LowPart = kernel.dwLowDateTime;
-    k.HighPart = kernel.dwHighDateTime;
-    u.LowPart = user.dwLowDateTime;
-    u.HighPart = user.dwHighDateTime;
-    return (k.QuadPart + u.QuadPart) * 100;  // FILETIME ticks are 100 ns
+    static std::once_flag calib_once;
+    static double cycles_per_ns = 0.0;
+    std::call_once(calib_once, [] { cycles_per_ns = calibrate_cycles_per_ns(); });
+    if (cycles_per_ns <= 0.0) return 0;
+
+    ULONG64 cycles = 0;
+    if (!QueryThreadCycleTime(GetCurrentThread(), &cycles)) return 0;
+    return static_cast<uint64_t>(static_cast<double>(cycles) / cycles_per_ns);
 }
 
 #elif defined(__APPLE__)

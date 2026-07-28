@@ -195,6 +195,14 @@ void render_thread_main(GLFWwindow* window, const InputChannel& input,
     constexpr uint64_t kBenchWarmup = 500;
     uint64_t bench_cpu0 = 0, bench_wall0 = 0;
 
+    // thread_cpu_now_ns()'s first call on Windows burns ~24 ms calibrating
+    // QueryThreadCycleTime against pacer_now_ns (see pacer.cpp). It must
+    // happen here, before the loop, and not be allowed to happen for the
+    // first time at the frame-500 warmup snapshot below -- otherwise that
+    // 24 ms of calibration spin would land inside a timed frame and get
+    // counted as render-thread work in the bench's CPU% column.
+    if (cfg.bench_frames) (void)thread_cpu_now_ns();
+
     while (!stop.load(std::memory_order_relaxed)) {
         const uint64_t frame_start_ns = logging ? pacer_now_ns() : 0;
 

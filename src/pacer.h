@@ -101,8 +101,10 @@ inline bool parse_pace_strategy(std::string_view name, PaceStrategy& out) {
 
 // CPU time consumed by the CALLING thread (kernel + user), for the
 // benchmark's honesty column: it prices what each strategy pays for
-// accuracy. GetThreadTimes on Windows; CLOCK_THREAD_CPUTIME_ID elsewhere.
-// Defined in pacer.cpp.
+// accuracy. QueryThreadCycleTime, calibrated against pacer_now_ns, on
+// Windows -- GetThreadTimes only samples at scheduler-tick boundaries and
+// reads either 0 or a full tick, never the true value; CLOCK_THREAD_CPUTIME_ID
+// elsewhere. Defined in pacer.cpp.
 uint64_t thread_cpu_now_ns();
 
 // Monotonic clock in nanoseconds; per-platform, defined in pacer.cpp. The

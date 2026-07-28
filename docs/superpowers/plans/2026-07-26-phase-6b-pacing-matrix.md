@@ -28,6 +28,7 @@ Repo: `C:\Users\tiffm\Desktop\OpenGL Renderer\OpenGL-Renderer` (parent folder ha
 - `--pace NAME` requires `--fps > 0`; `--log` now requires `--fps > 0` OR `--bench-frames > 0`; all rejections before `glfwInit`.
 - Python scripts: stdlib only (no pip installs); invoked as `python bench/...`. Raw results in `bench/results/raw/` (git-ignored); committed outputs are the summary markdown + `summary.csv` under `bench/results/`.
 - C++20; no new dependencies. Build/test: `cmake --build build --config Release`, `ctest --test-dir build -C Release --output-on-failure` (cmake full path `"C:\Program Files\CMake\bin\cmake.exe"` if not on PATH; generator VS 16 2019).
+- **Amendment (2026-07-27, during Task 4):** GetThreadTimes proved tick-sampled (all matrix cpu_ns exact multiples of 15,625,000 ns; timer-144 read 0.33% vs a 1.44% workload floor). Windows leg now uses QueryThreadCycleTime calibrated against pacer_now_ns; POSIX legs unchanged. Decided by controller under the human partner's Option A approval.
 
 ## File Structure
 

@@ -1,4 +1,6 @@
+#include <chrono>
 #include <cstdio>
+#include <thread>
 
 #include "pacer.h"
 
@@ -53,8 +55,49 @@ static int check(const char* name, const SmokeResult& r) {
     return 0;
 }
 
+// Regression for the tick-sampling bug in the old GetThreadTimes source
+// (Task 4 fix, 2026-07-27): burst 100 us of real CPU work then sleep 2 ms,
+// 50 times. True CPU consumed is ~50 * 100us = 5 ms spread across ~50 *
+// (0.1 + 2) ms =~ 105 ms of wall time -- almost all of it inside sleeps, with
+// only brief 100 us bursts on-CPU between them. GetThreadTimes only samples
+// CPU accounting at scheduler-tick boundaries (~15.6 ms on Windows): the
+// thread is asleep at nearly every tick, so it typically reads 0; on the
+// rare tick where it happens to be caught on-CPU it gets charged a whole
+// 15,625,000 ns quantum instead of the ~2 us of actual work it did in that
+// tick. Neither outcome is anywhere near the true ~5 ms. The bounds below
+// are deliberately asymmetric-tight: 2 ms rules out the "reads ~0" failure
+// mode, and 14 ms (just under one 15.625 ms quantum) rules out the "charged
+// one lucky full tick" failure mode -- that upper bound is what makes this
+// test immune to a lucky-tick false pass. POSIX CLOCK_THREAD_CPUTIME_ID
+// passes this natively (true nanosecond-resolution accounting), so CI's
+// ubuntu leg is unaffected by this regression.
+static int check_burst_visibility() {
+    constexpr int kIters = 50;
+    constexpr uint64_t kBurstNs = 100'000;  // 100 us of real on-CPU spin per iteration
+    const uint64_t c0 = thread_cpu_now_ns();
+    for (int i = 0; i < kIters; ++i) {
+        const uint64_t burst_start = pacer_now_ns();
+        while (pacer_now_ns() - burst_start < kBurstNs) {
+            // busy-spin: real CPU time the thread-CPU clock must be able to see
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    const uint64_t cpu_ns = thread_cpu_now_ns() - c0;
+    std::printf("burst_visibility: cpu %.3f ms (expect ~5 ms; bounds [2, 14] ms)\n",
+                cpu_ns / 1e6);
+    if (cpu_ns < 2'000'000ull || cpu_ns > 14'000'000ull) {
+        std::fprintf(stderr,
+                     "FAIL burst_visibility: cpu_ns=%llu outside [2000000, 14000000]\n",
+                     static_cast<unsigned long long>(cpu_ns));
+        return 1;
+    }
+    return 0;
+}
+
 int main() {
     int failures = 0;
+
+    failures += check_burst_visibility();
 
     const SmokeResult ts = run_pacer(PaceStrategy::TimerSpin);
     failures += check("timer_spin", ts);
