@@ -11,6 +11,7 @@ the frame clock). Stdlib-only, like every runner in bench/.
 Requires an activated emsdk: emcc must be on PATH (run emsdk_env first).
 """
 import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -83,8 +84,48 @@ def main() -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src, dst)
 
+    # Phase 8c: CI platform data is OPTIONAL -- the first deploy after adding
+    # bench.yml predates any CI run, and one missing platform must not take
+    # the site down. Skip-with-warning; the manifest reflects what staged.
+    CI_PLATFORMS = ["windows-latest", "ubuntu-latest"]
+    CI_FILES = ["pacing-summary.csv", "handoff-summary.csv",
+                "frametime-hist.json", "provenance.json"]
+    platforms = [{
+        "id": "win11-arc",
+        "label": "Windows 11 · Core Ultra 7 155H · Intel Arc "
+                 "(desktop, run of record)",
+        "paths": {"hist": "data/frametime-hist.json",
+                  "pacing": "data/pacing-summary.csv",
+                  "handoff": "data/handoff-summary.csv"},
+        "provenance": None,
+    }]
+    for pid in CI_PLATFORMS:
+        src_dir = root / "bench" / "results" / "ci" / pid
+        missing = [f for f in CI_FILES if not (src_dir / f).is_file()]
+        if missing:
+            print(f"WARNING: CI platform {pid} not staged -- missing "
+                  f"{', '.join(missing)} under {src_dir}", flush=True)
+            continue
+        for f in CI_FILES:
+            dst = out / "data" / "ci" / pid / f
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src_dir / f, dst)
+        label = json.loads(
+            (src_dir / "provenance.json").read_text(encoding="utf-8"))["label"]
+        platforms.append({
+            "id": pid, "label": label,
+            "paths": {"hist": f"data/ci/{pid}/frametime-hist.json",
+                      "pacing": f"data/ci/{pid}/pacing-summary.csv",
+                      "handoff": f"data/ci/{pid}/handoff-summary.csv"},
+            "provenance": f"data/ci/{pid}/provenance.json",
+        })
+    manifest = out / "data" / "platforms.json"
+    manifest.write_text(json.dumps(platforms, indent=1) + "\n", newline="\n",
+                        encoding="utf-8")
+
     print(f"wasm: js_bytes={js.stat().st_size} wasm_bytes={wasm.stat().st_size} "
-          f"staged={len(stage)} out={out}", flush=True)
+          f"staged={len(stage)} platforms={len(platforms)} out={out}",
+          flush=True)
 
 
 if __name__ == "__main__":

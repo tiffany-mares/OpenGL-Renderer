@@ -129,9 +129,9 @@
     </div>
     <label class="filter-label" for="platform">Platform</label>
     <select id="platform">
-      <option value="win11-arc">Windows 11 · Core Ultra 7 155H · Intel Arc</option>
+      <option value="win11-arc">Windows 11 · Core Ultra 7 155H · Intel Arc (desktop, run of record)</option>
     </select>
-    <span class="filter-note">1 platform measured — more when measured</span>
+    <span class="filter-note" id="platform-note">1 platform measured — more when measured</span>
   </div>
 
   <h2 id="pacing-title">Frame pacing</h2>
@@ -156,7 +156,7 @@
     <div class="card">
       <h4 class="panel-title">Contended sweep — reader p99 vs publish rate</h4>
       <div class="chart-box tall"><canvas id="sweep-chart"></canvas></div>
-      <p class="overflow-note">Points sit at each run's <em>achieved</em>
+      <p class="overflow-note" id="sweep-note">Points sit at each run's <em>achieved</em>
       publish rate; the unthrottled cells land at what each backend actually
       reached. Below ≈100&nbsp;k publishes/s the mutex's read tail is at the
       100&nbsp;ns measurement floor — the crossover from the committed

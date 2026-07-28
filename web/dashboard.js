@@ -26,8 +26,12 @@ var BACKEND = [ // categorical slots 5-7
 var HIST_XCAP_MS = 18; // same cap as the committed README figure; overflow noted
 
 var state = { rate: '144', platform: 'win11-arc' };
-var DATA = null;        // { hist, pacing, handoff } after boot
-var histCharts = [];    // destroyed/rebuilt on rate change
+var PLATFORMS = null;   // data/platforms.json, staged by web/build.py
+var DATA = null;        // { hist, pacing, handoff, provenance } per platform
+var histCharts = [];    // destroyed/rebuilt on rate or platform change
+var costChart = null, sweepChart = null;   // destroyed on platform change
+var desktopFooter = null, desktopCaption = null; // committed static text, saved at boot
+var desktopSweepNote = null;
 
 /* ---- tiny CSV splitter: simple comma CSVs with empty fields, no quoting ---- */
 function parseCsv(text) {
@@ -293,7 +297,7 @@ function renderCostChart() {
   BACKEND.forEach(function (b) {
     if (!cost[b.key]) fatal('handoff-summary.csv has no cost row for ' + b.key);
   });
-  new Chart(document.getElementById('cost-chart'), {
+  costChart = new Chart(document.getElementById('cost-chart'), {
     type: 'bar',
     data: {
       labels: ['publish', 'read'],
@@ -339,14 +343,20 @@ function renderSweepChart() {
              backgroundColor: b.color, pointRadius: 4, pointHitRadius: 10,
              borderWidth: 2, tension: 0 };
   });
-  new Chart(document.getElementById('sweep-chart'), {
+  var minX = Infinity, maxX = 0;
+  datasets.forEach(function (ds) { ds.data.forEach(function (pt) {
+    if (pt.x < minX) minX = pt.x;
+    if (pt.x > maxX) maxX = pt.x;
+  }); });
+  var xmin = Math.min(800, minX * 0.8), xmax = Math.max(2e7, maxX * 1.5);
+  sweepChart = new Chart(document.getElementById('sweep-chart'), {
     type: 'line',
     data: { datasets: datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false }, // crosshair-style shared tooltip
       scales: {
-        x: axisStyle({ type: 'logarithmic', min: 800, max: 2e7,
+        x: axisStyle({ type: 'logarithmic', min: xmin, max: xmax,
           title: { display: true, text: 'achieved publishes/s (log)',
                    color: TOKEN.muted, font: { size: 10 } },
           ticks: { callback: function (v) {
@@ -363,7 +373,9 @@ function renderSweepChart() {
         endLabels: { enabled: true },
         /* 1e5 is the measured crossover from bench/results/2026-07-27-handoff.md:
          * "first measurable departure is at ~100,000 publishes/s". */
-        vline: { x: 1e5, label: '≈100k/s — mutex p99 first departs' },
+        vline: state.platform === 'win11-arc'
+             ? { x: 1e5, label: '≈100k/s — mutex p99 first departs' }
+             : { x: null },  // desktop-measured crossover; not asserted for CI
         tooltip: tooltipStyle({ displayColors: true, callbacks: {
           title: function (items) {
             return 'target ' + (items[0].raw.target || SWEEP_TARGETS[items[0].dataIndex]);
@@ -431,34 +443,124 @@ function wireFilters() {
     });
   });
   document.getElementById('platform').addEventListener('change', function (e) {
-    state.platform = e.target.value; // single honest option today; shape ships
+    if (state.platform === e.target.value) return;
+    state.platform = e.target.value; // rate persists across platform switches
+    loadPlatform(state.platform);
   });
 }
 
 /* ================================ boot ================================== */
-Promise.all([
-  fetch('data/frametime-hist.json'),
-  fetch('data/pacing-summary.csv'),
-  fetch('data/handoff-summary.csv')
-]).then(function (rs) {
-  rs.forEach(function (r) {
-    if (!r.ok) throw new Error(r.url + ' -> HTTP ' + r.status);
-  });
-  return Promise.all([rs[0].json(), rs[1].text(), rs[2].text()]);
-}).then(function (loaded) {
-  DATA = { hist: loaded[0], pacing: parseCsv(loaded[1]),
-           handoff: parseCsv(loaded[2]) };
-  if (!DATA.hist.cells || !DATA.hist.bin_ns) {
-    throw new Error('frametime-hist.json has no cells/bin_ns -- wrong file staged?');
+function bootError(e) {
+  fatal('dashboard data failed to load — ' + e.message +
+        '. (fetch needs http://; for a local preview run ' +
+        '`python -m http.server -d dist`, file:// will not work)');
+}
+
+function platformById(id) {
+  for (var i = 0; i < PLATFORMS.length; i++) {
+    if (PLATFORMS[i].id === id) return PLATFORMS[i];
   }
-  wireFilters();
+  return null;
+}
+
+function destroyCharts() {
+  histCharts.forEach(function (c) { c.destroy(); });
+  histCharts = [];
+  if (costChart) { costChart.destroy(); costChart = null; }
+  if (sweepChart) { sweepChart.destroy(); sweepChart = null; }
+}
+
+function renderProvenance() {
+  var foot = document.getElementById('provenance');
+  var cap = document.getElementById('pacing-caption');
+  if (!DATA.provenance) { // desktop run of record: the committed static text
+    foot.innerHTML = desktopFooter;
+    cap.innerHTML = desktopCaption;
+    document.getElementById('sweep-note').innerHTML = desktopSweepNote;
+    return;
+  }
+  var pv = DATA.provenance;
+  document.getElementById('sweep-note').textContent =
+    "Points sit at each run's achieved publish rate; the unthrottled cells " +
+    'land at what each backend actually reached. The ≈100 k/s crossover was ' +
+    'measured on the desktop run of record and is not asserted for CI sweeps.';
+  cap.textContent = pv.frames_per_cell.toLocaleString() +
+    ' frames per cell, first 500 dropped as warmup; intervals are frame ' +
+    'start-to-start, 50 µs bins, log count axis. Weekly CI run of ' +
+    pv.run_date + ' on ' + pv.platform + '.';
+  foot.innerHTML = ''; // rebuilt from provenance.json via textContent nodes
+  foot.appendChild(el('span', null, 'CI benchmark run — ' +
+    pv.measurement_class + '. Run ' + pv.run_date + ', commit '));
+  foot.appendChild(el('code', null, pv.commit));
+  foot.appendChild(el('span', null, ', runner ' + pv.runner_image +
+    ', CPU ' + pv.cpu + ', GL ' + pv.gl_renderer + ' (' + pv.gl_version +
+    '), ' + pv.frames_per_cell.toLocaleString() + ' frames/cell. '));
+  if (pv.run_url) {
+    var a = el('a', null, 'workflow run');
+    a.href = pv.run_url;
+    foot.appendChild(a);
+    foot.appendChild(el('span', null, ' · '));
+  }
+  var d = el('a', null, 'pipeline doc');
+  d.href = 'https://github.com/tiffany-mares/OpenGL-Renderer/blob/main/' +
+           'bench/results/2026-07-28-ci-pipeline.md';
+  foot.appendChild(d);
+}
+
+function renderAll() {
+  destroyCharts();
+  /* entity colors are keyed by the strategy/backend constants above --
+   * a platform swap re-renders everything but never repaints an entity */
   renderHistograms(state.rate);
   renderPacingTable(state.rate);
   renderCostChart();
   renderSweepChart();
   renderHandoffTables();
-}).catch(function (e) {
-  fatal('dashboard data failed to load — ' + e.message +
-        '. (fetch needs http://; for a local preview run ' +
-        '`python -m http.server -d dist`, file:// will not work)');
-});
+  renderProvenance();
+}
+
+function loadPlatform(id) {
+  var p = platformById(id);
+  if (!p) return fatal('platforms.json has no platform ' + id);
+  var reqs = [fetch(p.paths.hist), fetch(p.paths.pacing),
+              fetch(p.paths.handoff)];
+  if (p.provenance) reqs.push(fetch(p.provenance));
+  return Promise.all(reqs).then(function (rs) {
+    rs.forEach(function (r) {
+      if (!r.ok) throw new Error(r.url + ' -> HTTP ' + r.status);
+    });
+    return Promise.all([rs[0].json(), rs[1].text(), rs[2].text(),
+                        p.provenance ? rs[3].json() : null]);
+  }).then(function (loaded) {
+    DATA = { hist: loaded[0], pacing: parseCsv(loaded[1]),
+             handoff: parseCsv(loaded[2]), provenance: loaded[3] };
+    if (!DATA.hist.cells || !DATA.hist.bin_ns) {
+      throw new Error(p.paths.hist + ' has no cells/bin_ns -- wrong file staged?');
+    }
+    renderAll();
+  }).catch(bootError);
+}
+
+fetch('data/platforms.json').then(function (r) {
+  if (!r.ok) throw new Error(r.url + ' -> HTTP ' + r.status);
+  return r.json();
+}).then(function (platforms) {
+  PLATFORMS = platforms;
+  var sel = document.getElementById('platform');
+  sel.innerHTML = '';
+  platforms.forEach(function (p) {
+    var opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.label;
+    sel.appendChild(opt);
+  });
+  sel.value = state.platform; // the desktop run of record stays the default
+  document.getElementById('platform-note').textContent =
+    platforms.length + ' platform' + (platforms.length === 1 ? '' : 's') +
+    ' measured';
+  desktopFooter = document.getElementById('provenance').innerHTML;
+  desktopCaption = document.getElementById('pacing-caption').innerHTML;
+  desktopSweepNote = document.getElementById('sweep-note').innerHTML;
+  wireFilters();
+  loadPlatform(state.platform);
+}).catch(bootError);
