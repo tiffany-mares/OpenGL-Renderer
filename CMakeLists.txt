@@ -52,6 +52,14 @@ add_executable(frame_log_tests tests/frame_log_test.cpp)
 target_include_directories(frame_log_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME frame_log_tests COMMAND frame_log_tests)
 
+add_executable(handoff_bench bench/handoff_bench.cpp src/pacer.cpp)
+target_include_directories(handoff_bench PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(handoff_bench PRIVATE Threads::Threads)
+if(WIN32)
+  target_link_libraries(handoff_bench PRIVATE winmm)
+endif()
+add_test(NAME handoff_bench_smoke COMMAND handoff_bench --quick)
+
 # --poll-hz rejection happens before glfwInit, so these run headless (CI-safe).
 add_test(NAME cube_rejects_poll_hz_zero COMMAND cube --poll-hz=0)
 add_test(NAME cube_rejects_poll_hz_high COMMAND cube --poll-hz=10001)
