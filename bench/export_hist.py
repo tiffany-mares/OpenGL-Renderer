@@ -147,7 +147,7 @@ def main() -> None:
     }
     out.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(doc, separators=(",", ":")) + "\n"
-    out.write_text(text)
+    out.write_text(text, newline="\n")
 
     nonzero = sum(len(c["bins"]) for c in cells.values())
     print(f"hist: cells={len(cells)} intervals_per_cell={interval_ns.pop()} "
