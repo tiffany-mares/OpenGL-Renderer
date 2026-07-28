@@ -323,6 +323,15 @@ Provenance: [bench/results/2026-07-28-web-dashboard.md](bench/results/2026-07-28
 Deployed automatically to GitHub Pages by `.github/workflows/pages.yml` on
 every push to main, with emsdk pinned to the version recorded there.
 
+The dashboard also carries weekly CI results from windows-latest and
+ubuntu-latest (both Mesa llvmpipe software GL), bot-committed under
+`bench/results/ci/<platform>/` and staged by `web/build.py` into
+`platforms.json`, honestly labeled as a different measurement class from
+the desktop numbers — a shared virtualized runner with no AC/idle control.
+The desktop run of record stays the dashboard's default view; the CI
+platforms are a switchable comparison, not a replacement. Pipeline details:
+[bench/results/2026-07-28-ci-pipeline.md](bench/results/2026-07-28-ci-pipeline.md).
+
 ### CLI reference
 
 Every value-taking flag except `--input` accepts both `--flag=value` and
@@ -372,3 +381,13 @@ garbage):
     python bench/run_plots.py     # ~7 min:  the two README figures
     build/Release/cube.exe --fps=50 --capture <dir>/cube.raw --capture-frames=350
     python bench/make_gif.py <dir>/cube.raw --out docs/cube.gif
+
+Beyond the hand-run desktop protocol above, `bench/ci_bench.py` runs the same
+13-cell pacing matrix and handoff micro-bench unattended on windows-latest
+and ubuntu-latest via `.github/workflows/bench.yml` (weekly, plus
+`workflow_dispatch`), committing `bench/results/ci/<platform>/` from the CI
+job itself rather than a hand copy-paste. Those runs are a different
+measurement class — a shared virtualized runner with software GL and no
+AC/idle control — documented in
+[bench/results/2026-07-28-ci-pipeline.md](bench/results/2026-07-28-ci-pipeline.md);
+the desktop tables above remain the run of record.
