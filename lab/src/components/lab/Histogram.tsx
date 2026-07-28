@@ -64,7 +64,7 @@ export function Histogram({ hz, platform }: { hz: Hz; platform: Platform }) {
             x={x(b.ms)}
             y={y(b.naive)}
             width={barW}
-            height={b.naive > 0 ? Math.max(0, H - PAD.bottom - y(b.naive)) : 0}
+            height={b.naive > 0 ? Math.max(3, H - PAD.bottom - y(b.naive)) : 0}
             fill="var(--series-naive)"
             opacity={0.75}
           />
@@ -75,7 +75,7 @@ export function Histogram({ hz, platform }: { hz: Hz; platform: Platform }) {
             x={x(b.ms)}
             y={y(b.tuned)}
             width={barW}
-            height={b.tuned > 0 ? Math.max(0, H - PAD.bottom - y(b.tuned)) : 0}
+            height={b.tuned > 0 ? Math.max(3, H - PAD.bottom - y(b.tuned)) : 0}
             fill="var(--series-tuned)"
           />
         ))}
