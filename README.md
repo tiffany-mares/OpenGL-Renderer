@@ -8,7 +8,7 @@ pacing on general-purpose OSes. The rotating cube is the demo, not the point.
 
     cmake -B build
     cmake --build build --config Release
-    build/Release/cube.exe [--input=mutex|bitmask|seqlock] [--fps N] [--log PATH]   # build/cube on Linux
+    build/Release/cube.exe [--input=mutex|bitmask|seqlock] [--fps N] [--poll-hz N] [--log PATH]   # build/cube on Linux
     ctest --test-dir build -C Release --output-on-failure
 
 Arrow keys rotate the cube, SPACE pauses the spin, ESC exits.
@@ -128,3 +128,45 @@ deadlines for a measured margin of spinning (~8–16% CPU, scaling with rate).
 Pure `spin` is marginally better still — zero misses everywhere — and costs an
 entire core (~99%). The default is the middle of that trade, and the margin it
 spins is measured per machine, not assumed.
+
+## Input-handoff benchmark (`--poll-hz N`)
+
+The input poll loop is paced by its own `FramePacer` — `--poll-hz N`
+(1..10000, default 1000) sets the publish rate, and every run prints a
+parseable `handoff:` exit line with publishes, achieved rate, missed
+deadlines, and reader retries. The benchmark prices the three handoff
+backends three ways. To reproduce:
+
+    python bench/run_handoff.py   # ~10 minutes; AC power, machine otherwise idle
+
+That runs `handoff_bench` (uncontended per-op costs plus a contended sweep),
+then six app cells (`--input=mutex|bitmask|seqlock` × `--poll-hz=1000|10000`,
+10,000 frames each at 144 Hz), and summarizes via
+`bench/summarize_handoff.py`. Committed results:
+[bench/results/2026-07-27-handoff.md](bench/results/2026-07-27-handoff.md)
+and the matching `2026-07-27-handoff-summary.csv`.
+
+Three tables, three meanings. **Table A** (uncontended cost) is batched
+per-op throughput — 1 M-iteration timed loops whose iterations overlap in
+the pipeline, so the numbers are amortized cost for comparing backends, not
+single-call latency. **Table B** (in-app) reports end-to-end input latency
+and reader retries at real app rates; its latency percentiles measure
+**sampling cadence, not backend cost** — publish gap plus consumer phase
+dominate at microsecond-scale op costs, so those columns characterize the
+poll pacing (judge them against each cell's *achieved* rate, printed below
+the table). **Table C** (contended sweep) is where backend differences are
+real: a tight-loop reader against a paced publisher swept from 1 kHz to
+unthrottled.
+
+The honest result: an uncontended `std::mutex` round-trip costs ~16.6 ns to
+publish and ~15.9 ns to read here. At this app's real rates — 1,000
+publishes/s against 144 reads/s — the writer holds the lock ~16,600 ns of
+every second (a 1.7 × 10⁻⁵ fraction), so the expected number of reads that
+ever meet a held lock is ≈ 144 × 1.7 × 10⁻⁵ ≈ 0.002 per second — about one
+contended read every seven minutes. The measured zeros agree: five of six
+app cells logged exactly zero reader retries. I built the lock-free backends
+anyway and measured where that stops being true: the mutex reader's p99
+stays indistinguishable from the seqlock's (within one 100 ns clock quantum)
+until ≈ 100,000 publishes/s, first measurably departing there (300 ns vs
+100 ns) and decisively by 1 M/s (1,300 ns vs 200 ns). Below that, choosing
+the seqlock is a design statement, not a performance win.
