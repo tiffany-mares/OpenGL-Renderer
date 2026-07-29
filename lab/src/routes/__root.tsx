@@ -81,7 +81,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "description", content: "A threaded OpenGL renderer's frame pacer, measured: zero missed deadlines out of 9,500 at 144 Hz where naive sleep misses half, across a desktop run of record and weekly CI runners." },
       { name: "author", content: "Tiffany Mares" },
       { property: "og:title", content: "tiffany-mares / opengl-renderer" },
-      { property: "og:description", content: "Hitting a frame deadline on an OS that doesn't want you to — measurements, decisions, and costs." },
+      { property: "og:description", content: "Hitting a frame deadline on an OS that doesn't want you to: measurements, decisions, and costs." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],

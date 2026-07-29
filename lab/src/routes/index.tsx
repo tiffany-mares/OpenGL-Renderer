@@ -38,9 +38,9 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "A threaded OpenGL renderer's frame pacer, measured: zero missed deadlines out of 9,500 at 144 Hz where naive sleep misses half — plus the input-handoff numbers that justify a mutex.",
+          "A threaded OpenGL renderer's frame pacer, measured: zero missed deadlines out of 9,500 at 144 Hz where naive sleep misses half, plus the input-handoff numbers that justify a mutex.",
       },
-      { property: "og:title", content: "tiffany-mares / opengl-renderer — hitting a frame deadline on an unwilling OS" },
+      { property: "og:title", content: "tiffany-mares / opengl-renderer, hitting a frame deadline on an unwilling OS" },
       {
         property: "og:description",
         content:
@@ -75,7 +75,7 @@ function Index() {
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
             A threaded OpenGL renderer&apos;s <Key>frame pacer</Key>, measured: <Key accent="metric-1">zero missed deadlines</Key> out
-            of 9,500 at <Key accent="metric-1">144 Hz</Key> where a <Key accent="series-naive">naive sleep loop</Key> misses half —
+            of 9,500 at <Key accent="metric-1">144 Hz</Key> where a <Key accent="series-naive">naive sleep loop</Key> misses half,
             and what that costs.
           </p>
         </div>
@@ -100,7 +100,7 @@ function Index() {
         <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
           The real renderer, compiled to WebAssembly (<Key>WebGL2</Key>). Click the cube for keyboard focus:
           arrows yaw/pitch, SPACE pauses. This build is <Key>single-threaded</Key> and paced by{" "}
-          <Key accent="metric-3">requestAnimationFrame</Key> on purpose — neither high-resolution sleep nor a
+          <Key accent="metric-3">requestAnimationFrame</Key> on purpose, neither high-resolution sleep nor a
           second GL thread exists on a browser main thread, so the pacer and the threaded render deliberately
           do not port. Every number below comes from the <Key accent="metric-2">native build</Key>.
         </p>
@@ -117,7 +117,7 @@ function Index() {
         <ul className="mt-5 space-y-2 text-sm leading-relaxed text-muted-foreground">
           {BACKSTORY.context.map((item) => (
             <li key={item} className="flex gap-2">
-              <span aria-hidden className="text-metric-2">—</span>
+              <span aria-hidden className="text-metric-2">·</span>
               <span>{highlight(item)}</span>
             </li>
           ))}
@@ -186,7 +186,7 @@ function Index() {
           sub={`naive sleep: ${m.p99Naive} ms`}
         />
         <Stat accent={2} label="missed deadlines" value={m.missed} unit="%" sub={`naive sleep: ${m.missedNaive} %`} />
-        <Stat accent={3} label="render thread CPU" value={m.cpu} unit="%" sub={`naive sleep: ${m.cpuNaive} % — the spin costs this`} />
+        <Stat accent={3} label="render thread CPU" value={m.cpu} unit="%" sub={`naive sleep: ${m.cpuNaive} %, the spin costs this`} />
       </section>
 
       {/* Filters */}
@@ -220,7 +220,7 @@ function Index() {
       <section id="histogram" className="mt-6 scroll-mt-20 rounded-lg border border-border bg-card p-5 sm:p-6">
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-medium">
-            Frame interval distribution — {PLATFORM_LABEL[platform]}, {hz} Hz
+            Frame interval distribution, {PLATFORM_LABEL[platform]}, {hz} Hz
           </h2>
           <span className="font-mono text-xs text-muted-foreground">
             <Key accent="metric-3">log y</Key> · <Key accent="metric-1">50 µs data, 0.25 ms display bins</Key> · <Key>9,500 frames per cell</Key>
@@ -231,12 +231,12 @@ function Index() {
 
       {/* Tables */}
       <section id="results" className="mt-14 scroll-mt-20">
-        <h2 className="flex items-center gap-2 text-sm font-medium"><span className="h-2 w-2 rounded-full bg-metric-2" />Results — <Key accent="metric-2">tuned pacer</Key> (--pace=timer_spin)</h2>
+        <h2 className="flex items-center gap-2 text-sm font-medium"><span className="h-2 w-2 rounded-full bg-metric-2" />Results, <Key accent="metric-2">tuned pacer</Key> (--pace=timer_spin)</h2>
         <ResultTable rows={RESULT_ROWS} />
-        <h2 className="mt-10 flex items-center gap-2 text-sm font-medium"><span className="h-2 w-2 rounded-full bg-series-naive" />Baseline — <Key accent="series-naive">naive sleep loop</Key> (--pace=sleep)</h2>
+        <h2 className="mt-10 flex items-center gap-2 text-sm font-medium"><span className="h-2 w-2 rounded-full bg-series-naive" />Baseline, <Key accent="series-naive">naive sleep loop</Key> (--pace=sleep)</h2>
         <ResultTable rows={BASELINE_ROWS} />
         <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-          Frame time is <Key>deadline-to-deadline</Key>, in milliseconds — a zero-miss cell sits exactly at the
+          Frame time is <Key>deadline-to-deadline</Key>, in milliseconds, a zero-miss cell sits exactly at the
           period <Key accent="metric-1">by construction</Key>, and the wake jitter each strategy absorbs is what
           the histogram above shows (start-to-start). Missed is the share of the 9,500 measured frames whose
           deadline was missed. The desktop tuned 60&nbsp;Hz max of 214.352&nbsp;ms is a single OS/driver stall
@@ -254,14 +254,14 @@ function Index() {
         </div>
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           <div className="rounded-lg border border-border bg-card p-5 sm:p-6">
-            <h3 className="text-sm font-medium">Uncontended per-op cost — {PLATFORM_LABEL[platform]}</h3>
+            <h3 className="text-sm font-medium">Uncontended per-op cost, {PLATFORM_LABEL[platform]}</h3>
             <div className="mt-4">
               <HandoffCost rows={handoffCost(platform)} />
             </div>
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{HANDOFF.costNote}</p>
           </div>
           <div className="rounded-lg border border-border bg-card p-5 sm:p-6">
-            <h3 className="text-sm font-medium">Contended sweep — {PLATFORM_LABEL[platform]}</h3>
+            <h3 className="text-sm font-medium">Contended sweep, {PLATFORM_LABEL[platform]}</h3>
             <div className="mt-4">
               <HandoffSweep
                 rows={handoffSweep(platform)}
@@ -274,7 +274,7 @@ function Index() {
         </div>
         {appRows.length > 0 ? (
           <div className="mt-6 rounded-lg border border-border bg-card p-5 sm:p-6">
-            <h3 className="text-sm font-medium">In-app input latency — desktop run of record</h3>
+            <h3 className="text-sm font-medium">In-app input latency, desktop run of record</h3>
             <div className="mt-3 overflow-x-auto">
               <table className="w-full min-w-[560px] text-sm">
                 <thead>
@@ -294,10 +294,10 @@ function Index() {
                       <td className="py-2 text-right font-mono">{r.poll_hz.toLocaleString()}</td>
                       <td className="py-2 text-right font-mono">{r.achieved_hz.toFixed(1)}</td>
                       <td className="py-2 text-right font-mono text-metric-1">
-                        {r.lat_p50_ns === null ? "—" : `${(r.lat_p50_ns / 1e6).toFixed(3)} ms`}
+                        {r.lat_p50_ns === null ? "-" : `${(r.lat_p50_ns / 1e6).toFixed(3)} ms`}
                       </td>
                       <td className="py-2 text-right font-mono text-metric-2">
-                        {r.lat_p99_ns === null ? "—" : `${(r.lat_p99_ns / 1e6).toFixed(3)} ms`}
+                        {r.lat_p99_ns === null ? "-" : `${(r.lat_p99_ns / 1e6).toFixed(3)} ms`}
                       </td>
                       <td className="py-2 text-right font-mono text-metric-3">{r.retries_per_sec.toFixed(1)}</td>
                     </tr>
@@ -309,7 +309,7 @@ function Index() {
           </div>
         ) : (
           <p className="mt-4 text-xs text-muted-foreground">
-            In-app latency cells are a desktop protocol — CI runs measure only the micro-benchmark above.
+            In-app latency cells are a desktop protocol, CI runs measure only the micro-benchmark above.
           </p>
         )}
       </section>
@@ -340,7 +340,7 @@ function Index() {
           <ul className="mt-3 space-y-2 text-sm leading-relaxed text-muted-foreground">
             {LIMITATIONS.map((l) => (
               <li key={l} className="flex gap-2">
-                <span aria-hidden className="text-series-naive">—</span>
+                <span aria-hidden className="text-series-naive">·</span>
                 <span>{highlight(l)}</span>
               </li>
             ))}

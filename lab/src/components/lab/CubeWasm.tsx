@@ -76,7 +76,7 @@ export function CubeWasm() {
       />
       {failed ? (
         <p className="absolute inset-x-3 top-3 font-mono text-xs text-series-naive">
-          demo failed to load — this build needs WebGL2. The numbers below are unaffected.
+          demo failed to load, this build needs WebGL2. The numbers below are unaffected.
         </p>
       ) : (
         <div className="pointer-events-none absolute right-3 top-3 text-right font-mono text-xs text-muted-foreground">
