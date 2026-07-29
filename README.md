@@ -15,6 +15,7 @@ from files committed in this repo, none re-measured in the browser.
 
 - [The demo](#the-demo)
 - [Quick start](#quick-start)
+- [Architecture](#architecture)
 - [Measured results](#measured-results): [figures](#the-pacer-visualized),
   [pacing](#pacing-at-144-hz), [input handoff](#input-handoff)
 - [Decision log](#decision-log)
@@ -68,6 +69,56 @@ Python is **not** required to build or run anything. Two scripts have
 dev-only dependencies, never installed in CI: `bench/plot_frames.py`
 (matplotlib) and `bench/make_gif.py` (Pillow). Everything else under
 `bench/` is stdlib-only.
+
+## Architecture
+
+Two threads, one channel between them, and a pacer that owns the frame
+clock instead of vsync:
+
+```mermaid
+flowchart LR
+  subgraph MAIN["main thread: window + events, never touches GL"]
+    direction TB
+    EV["glfwPollEvents, key state"]
+    PUB["publish InputSnapshot at ~1 kHz<br/>(paced by its own FramePacer)"]
+    EV --> PUB
+  end
+
+  subgraph CHAN["InputChannel, picked at startup (--input=)"]
+    direction TB
+    MU["mutex (default)"]
+    BM["bitmask, atomic u32, keys only"]
+    SL["seqlock, full payload + publish_ns"]
+  end
+
+  subgraph REND["render thread: owns the GL context and every GL object"]
+    direction TB
+    CONS["consume latest snapshot"]
+    DRAW["SceneGL scene_draw (uMvp)"]
+    SWAP["glfwSwapBuffers, vsync off"]
+    WAIT["FramePacer wait():<br/>sleep to deadline minus Welford margin, then spin<br/>absolute deadlines, misses counted and resynced"]
+    LOGB["FrameLog: preallocated buffer,<br/>CSV written only on exit"]
+    CONS --> DRAW --> SWAP --> WAIT --> CONS
+    WAIT -. "WaitStats per frame" .-> LOGB
+  end
+
+  PUB -- "publish" --> CHAN
+  CHAN -- "read" --> CONS
+  MAIN -. "FramebufferSize side channel (packed atomic)" .-> REND
+```
+
+Every timestamp on both threads comes from `pacer_now_ns()`, one monotonic
+timeline for deadlines, sleeps, publishes, and consumes; that is what makes
+`input_latency_ns = consume - publish` a same-clock subtraction. The sleep
+under `FramePacer` is each platform's sharpest timer (details in the
+[CLI reference](#cli-flags)). Shutdown order is load-bearing: signal stop →
+render thread deletes its GL objects and detaches the context → join →
+destroy the window on main.
+
+The Emscripten build compiles the right-hand loop out entirely: the browser
+build is single-threaded and `requestAnimationFrame`-paced, reusing the same
+`SceneGL` scene code, because neither high-resolution sleep nor a
+second-thread GL context exists on a browser main thread.
 
 ## Measured results
 
