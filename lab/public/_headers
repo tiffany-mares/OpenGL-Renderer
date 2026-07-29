@@ -1,0 +1,23 @@
+# Cloudflare Pages header rules -- parsed by Cloudflare at the deploy root,
+# never served as an asset (https://developers.cloudflare.com/pages/configuration/headers/).
+# Lives in lab/public/ so vite copies it into dist/client/, the directory
+# pages.yml deploys. (Phase 8d kept this in web/_headers; Phase 9b moved it.)
+
+/*
+  Cache-Control: public, max-age=3600
+
+/*.wasm
+  Content-Type: application/wasm
+
+# Vite emits content-hashed filenames under /assets/ -- cache forever.
+# Later rules override earlier ones for the same header name.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Threaded-WASM stretch goal: SharedArrayBuffer needs cross-origin isolation
+# (COOP + COEP). The build is single-threaded today (no -pthread, no SAB), and
+# enabling COEP without need would break future third-party embeds -- so the
+# hook ships commented out. Uncomment when a threaded build actually lands.
+# /*
+#   Cross-Origin-Opener-Policy: same-origin
+#   Cross-Origin-Embedder-Policy: require-corp
