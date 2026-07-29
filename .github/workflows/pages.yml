@@ -24,8 +24,22 @@ jobs:
         with:
           version: 6.0.4
           actions-cache-folder: emsdk-cache
-      - name: Build wasm site
+      - name: Build cube wasm
         run: python web/build.py --out dist
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: lab/package-lock.json
+      - name: Install lab dependencies
+        working-directory: lab
+        run: npm ci
+      - name: Regenerate lab data from committed bench results
+        working-directory: lab
+        run: npm run gen-data
+      - name: Build lab site (static prerender; prebuild stages the cube from dist/)
+        working-directory: lab
+        run: npm run build
       - name: Preflight -- require Cloudflare secrets
         env:
           HAVE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
@@ -47,13 +61,13 @@ jobs:
             fail=1
           fi
           exit $fail
-      - name: Deploy dist to Cloudflare Pages (Direct Upload)
+      - name: Deploy lab/dist/client to Cloudflare Pages (Direct Upload)
         id: cf
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.114.0"
-          command: pages deploy dist --project-name=${{ env.CF_PAGES_PROJECT }} --branch=main --commit-dirty=true
+          command: pages deploy lab/dist/client --project-name=${{ env.CF_PAGES_PROJECT }} --branch=main --commit-dirty=true
       - name: Report deployment URL
         run: echo "deployed ${{ steps.cf.outputs.deployment-url }} (production alias ${{ env.CF_PAGES_URL }})"
