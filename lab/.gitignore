@@ -31,6 +31,8 @@ dist-ssr
 *.sln
 *.sw?
 
-# staged Emscripten artifacts (built by web/build.py, copied by scripts/stage-cube.mjs)
+# staged artifacts (copied by scripts/stage-cube.mjs: cube from web/build.py's
+# dist/, diagram from docs/architecture-dark.svg)
 public/cube.js
 public/cube.wasm
+public/architecture.svg

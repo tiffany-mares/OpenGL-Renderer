@@ -20,4 +20,16 @@ for (const name of ["cube.js", "cube.wasm"]) {
   mkdirSync(PUBLIC, { recursive: true });
   copyFileSync(src, join(PUBLIC, name));
 }
-console.log("staged cube.js + cube.wasm into public/");
+
+// The architecture diagram is committed once at docs/ (dark variant for this
+// dark-themed page; docs/architecture.mmd is the source) and staged here
+// rather than duplicated in git -- same rule as the bench CSVs.
+const DIAGRAM = join(HERE, "..", "..", "docs", "architecture-dark.svg");
+if (!existsSync(DIAGRAM) || statSync(DIAGRAM).size === 0) {
+  console.error(
+    `FATAL: ${DIAGRAM} is missing -- re-render it from docs/architecture.mmd (see that file's header for how).`,
+  );
+  process.exit(1);
+}
+copyFileSync(DIAGRAM, join(PUBLIC, "architecture.svg"));
+console.log("staged cube.js + cube.wasm + architecture.svg into public/");
