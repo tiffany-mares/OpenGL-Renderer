@@ -43,7 +43,7 @@ export function SectionNav() {
   return (
     <nav
       aria-label="Sections"
-      className="sticky top-0 z-30 -mx-6 mb-2 border-b border-hairline bg-background/85 px-6 backdrop-blur sm:-mx-8 sm:px-8"
+      className="sticky top-0 z-30 mx-[calc(50%-50vw)] mb-2 border-b border-hairline bg-background/85 px-6 backdrop-blur sm:px-8"
     >
       <div className="flex items-center justify-between gap-4">
         <ul className="flex gap-1 overflow-x-auto py-2 font-mono text-xs">

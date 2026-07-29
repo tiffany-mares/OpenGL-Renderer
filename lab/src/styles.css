@@ -130,6 +130,13 @@
     border-color: var(--color-border);
   }
 
+  /* The full-bleed SectionNav uses vw-based negative margins, which overhang
+     the vertical scrollbar's gutter by half its width; clip (not hidden --
+     hidden would break position: sticky) swallows that overhang. */
+  html {
+    overflow-x: clip;
+  }
+
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
