@@ -83,9 +83,6 @@ function Index() {
           <a href="https://github.com/tiffany-mares/OpenGL-Renderer" className="underline underline-offset-4 hover:no-underline">
             github ↗
           </a>
-          <a href="https://opengl-renderer.pages.dev/" className="underline underline-offset-4 hover:no-underline">
-            live demo ↗
-          </a>
           <a href="https://www.linkedin.com/in/tiffany-mares" className="underline underline-offset-4 hover:no-underline">
             linkedin ↗
           </a>
