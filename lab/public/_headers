@@ -10,8 +10,11 @@
   Content-Type: application/wasm
 
 # Vite emits content-hashed filenames under /assets/ -- cache forever.
-# Later rules override earlier ones for the same header name.
+# Cloudflare APPENDS values from every matching rule (verified live: without
+# the detach, /assets/* served both max-age=3600 and max-age=31536000); the
+# `!` line drops the /* value so only the immutable one ships.
 /assets/*
+  ! Cache-Control
   Cache-Control: public, max-age=31536000, immutable
 
 # Threaded-WASM stretch goal: SharedArrayBuffer needs cross-origin isolation
