@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Phase 8 web-build driver.
+"""Cube wasm builder (Phase 8; slimmed in Phase 9b).
 
-Compiles the whole app (src/*.cpp) to WebAssembly with Emscripten and stages
-a servable site in --out: cube.js + cube.wasm + the page, dashboard, vendored
-Chart.js, and committed benchmark data, plus the Cloudflare _headers rules.
-The same three translation units as the native build; __EMSCRIPTEN__ guards
-select the single-threaded browser path (no render thread, no pacer in the
-loop -- requestAnimationFrame owns the frame clock). Stdlib-only, like every
-runner in bench/.
+Compiles the whole app (src/*.cpp) to WebAssembly with Emscripten and writes
+cube.js + cube.wasm into --out. The page that serves them is lab/ -- its
+build stages these artifacts via lab/scripts/stage-cube.mjs and deploys a
+static prerender (see .github/workflows/pages.yml). The same three
+translation units as the native build; __EMSCRIPTEN__ guards select the
+single-threaded browser path (no render thread, no pacer in the loop --
+requestAnimationFrame owns the frame clock). Stdlib-only, like every runner
+in bench/.
 
 Requires an activated emsdk: emcc must be on PATH (run emsdk_env first).
 """
 import argparse
-import json
 import shutil
 import subprocess
 import sys
@@ -34,7 +34,7 @@ EMCC_FLAGS = [
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", default="dist",
-                    help="output directory for the servable site (git-ignored)")
+                    help="output directory for cube.js + cube.wasm (git-ignored)")
     args = ap.parse_args()
 
     root = Path(__file__).resolve().parent.parent
@@ -64,72 +64,8 @@ def main() -> None:
         if not artifact.is_file():
             sys.exit(f"FATAL: emcc exited 0 but {artifact} was not produced")
 
-    # Phase 8b staging: page, dashboard, vendored Chart.js, committed data.
-    # The two results CSVs stage under stable dashboard names; they stay
-    # committed once under bench/results/, never duplicated in git.
-    stage = [
-        (root / "web" / "index.html", out / "index.html"),
-        (root / "web" / "dashboard.js", out / "dashboard.js"),
-        (root / "web" / "vendor" / "chart.umd.min.js",
-         out / "vendor" / "chart.umd.min.js"),
-        (root / "web" / "data" / "frametime-hist.json",
-         out / "data" / "frametime-hist.json"),
-        (root / "bench" / "results" / "2026-07-27-summary.csv",
-         out / "data" / "pacing-summary.csv"),
-        (root / "bench" / "results" / "2026-07-27-handoff-summary.csv",
-         out / "data" / "handoff-summary.csv"),
-        # Phase 8d: Cloudflare Pages header rules (cache + wasm content-type;
-        # commented COOP/COEP hook). Parsed by Cloudflare, never served.
-        (root / "web" / "_headers", out / "_headers"),
-    ]
-    for src, dst in stage:
-        if not src.is_file():
-            sys.exit(f"FATAL: {src} is missing -- the site would deploy incomplete")
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, dst)
-
-    # Phase 8c: CI platform data is OPTIONAL -- the first deploy after adding
-    # bench.yml predates any CI run, and one missing platform must not take
-    # the site down. Skip-with-warning; the manifest reflects what staged.
-    CI_PLATFORMS = ["windows-latest", "ubuntu-latest"]
-    CI_FILES = ["pacing-summary.csv", "handoff-summary.csv",
-                "frametime-hist.json", "provenance.json"]
-    platforms = [{
-        "id": "win11-arc",
-        "label": "Windows 11 · Core Ultra 7 155H · Intel Arc "
-                 "(desktop, run of record)",
-        "paths": {"hist": "data/frametime-hist.json",
-                  "pacing": "data/pacing-summary.csv",
-                  "handoff": "data/handoff-summary.csv"},
-        "provenance": None,
-    }]
-    for pid in CI_PLATFORMS:
-        src_dir = root / "bench" / "results" / "ci" / pid
-        missing = [f for f in CI_FILES if not (src_dir / f).is_file()]
-        if missing:
-            print(f"WARNING: CI platform {pid} not staged -- missing "
-                  f"{', '.join(missing)} under {src_dir}", flush=True)
-            continue
-        for f in CI_FILES:
-            dst = out / "data" / "ci" / pid / f
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(src_dir / f, dst)
-        label = json.loads(
-            (src_dir / "provenance.json").read_text(encoding="utf-8"))["label"]
-        platforms.append({
-            "id": pid, "label": label,
-            "paths": {"hist": f"data/ci/{pid}/frametime-hist.json",
-                      "pacing": f"data/ci/{pid}/pacing-summary.csv",
-                      "handoff": f"data/ci/{pid}/handoff-summary.csv"},
-            "provenance": f"data/ci/{pid}/provenance.json",
-        })
-    manifest = out / "data" / "platforms.json"
-    manifest.write_text(json.dumps(platforms, indent=1) + "\n", newline="\n",
-                        encoding="utf-8")
-
     print(f"wasm: js_bytes={js.stat().st_size} wasm_bytes={wasm.stat().st_size} "
-          f"staged={len(stage)} platforms={len(platforms)} out={out}",
-          flush=True)
+          f"out={out}", flush=True)
 
 
 if __name__ == "__main__":
