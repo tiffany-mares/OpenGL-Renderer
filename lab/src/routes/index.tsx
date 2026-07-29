@@ -34,7 +34,7 @@ import {
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "tiffany-mares / opengl-renderer — hitting a frame deadline on an unwilling OS" },
+      { title: "OpenGL Renderer" },
       {
         name: "description",
         content:

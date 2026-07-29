@@ -77,7 +77,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "tiffany-mares / opengl-renderer — hitting a frame deadline on an unwilling OS" },
+      { title: "OpenGL Renderer" },
       { name: "description", content: "A threaded OpenGL renderer's frame pacer, measured: zero missed deadlines out of 9,500 at 144 Hz where naive sleep misses half, across a desktop run of record and weekly CI runners." },
       { name: "author", content: "Tiffany Mares" },
       { property: "og:title", content: "tiffany-mares / opengl-renderer" },
