@@ -77,48 +77,83 @@ clock instead of vsync:
 
 ```mermaid
 flowchart LR
-  subgraph MAIN["main thread: window + events, never touches GL"]
+  CLK(["pacer_now_ns(): one monotonic clock for both threads<br/>QPC on Windows, CLOCK_MONOTONIC on Linux, mach_absolute_time on macOS"])
+
+  subgraph MAIN["main thread: owns the window and event queue, never touches GL"]
     direction TB
-    EV["glfwPollEvents, key state"]
-    PUB["publish InputSnapshot at ~1 kHz<br/>(paced by its own FramePacer)"]
-    EV --> PUB
+    WIN["glfwCreateWindow,<br/>3.3 core context, event queue"]
+    EV["glfwPollEvents,<br/>key + arrow state"]
+    POLLPACE["poll loop paced by its own FramePacer<br/>(TimerSpin, --poll-hz, default 1 kHz,<br/>~968 to 971 Hz achieved)"]
+    PUB["publish InputSnapshot:<br/>keys, yaw/pitch, publish_ns"]
+    WIN --> EV --> PUB --> POLLPACE --> EV
   end
 
-  subgraph CHAN["InputChannel, picked at startup (--input=)"]
+  subgraph CHAN["InputChannel: one interface, three backends (--input=)"]
     direction TB
-    MU["mutex (default)"]
-    BM["bitmask, atomic u32, keys only"]
-    SL["seqlock, full payload + publish_ns"]
+    MU["MutexChannel (default):<br/>std::mutex around a small POD"]
+    BM["BitmaskChannel: atomic u32,<br/>keys only, cannot carry publish_ns"]
+    SL["SeqlockChannel: full payload,<br/>sequence-number retry, read_retries() counter"]
+    FB["FramebufferSize side channel (packed atomic;<br/>GLFW size queries are main-thread-only)"]
   end
 
-  subgraph REND["render thread: owns the GL context and every GL object"]
+  subgraph REND["render thread: makes the context current, owns every GL object"]
     direction TB
-    CONS["consume latest snapshot"]
-    DRAW["SceneGL scene_draw (uMvp)"]
-    SWAP["glfwSwapBuffers, vsync off"]
-    WAIT["FramePacer wait():<br/>sleep to deadline minus Welford margin, then spin<br/>absolute deadlines, misses counted and resynced"]
-    LOGB["FrameLog: preallocated buffer,<br/>CSV written only on exit"]
-    CONS --> DRAW --> SWAP --> WAIT --> CONS
+    INIT["glfwMakeContextCurrent,<br/>GLAD load, scene_init"]
+    CONS["consume latest snapshot<br/>(input_latency_ns = consume time - publish_ns)"]
+    WORK["synthetic ~100 µs CPU workload when instrumented<br/>(the CSVs measure the pacer, not the GPU)"]
+    DRAW["SceneGL scene_draw: cube, uMvp<br/>(scene code shared verbatim with the web build)"]
+    SWAP["glfwSwapBuffers with glfwSwapInterval(0):<br/>the pacer owns the frame clock, not vsync"]
+    WAIT["FramePacer wait(), --pace=sleep|timer|timer_spin|spin:<br/>absolute deadlines (next += period),<br/>sleep to deadline minus margin (Welford mean + 3 sigma),<br/>spin the remainder; a miss is counted and re-anchored,<br/>never repaid with catch-up bursts"]
+    TIMER["platform timer under the sleep:<br/>CreateWaitableTimerExW high-resolution (Windows),<br/>clock_nanosleep TIMER_ABSTIME (Linux),<br/>mach_wait_until (macOS)"]
+    LOGB["FrameLog: preallocated, drop-and-count when full,<br/>one row per frame, CSV written only on exit"]
+    INIT --> CONS
+    CONS --> WORK --> DRAW --> SWAP --> WAIT --> CONS
+    WAIT --- TIMER
     WAIT -. "WaitStats per frame" .-> LOGB
   end
 
-  PUB -- "publish" --> CHAN
-  CHAN -- "read" --> CONS
-  MAIN -. "FramebufferSize side channel (packed atomic)" .-> REND
+  subgraph STOP["shutdown: the order is load-bearing"]
+    direction LR
+    S1["signal stop"] --> S2["render thread deletes GL objects,<br/>detaches context"] --> S3["join"] --> S4["glfwDestroyWindow<br/>on main"]
+  end
+
+  WEB["Emscripten build: single-threaded, requestAnimationFrame-paced,<br/>no render thread and no pacer in the browser, same SceneGL"]
+
+  CLK -. "timestamps" .-> PUB
+  CLK -. "deadlines, sleeps, consumes" .-> WAIT
+  PUB -- "publish()" --> CHAN
+  CHAN -- "read()" --> CONS
+  EV -.-> FB
+  FB -. "viewport size" .-> DRAW
+  DRAW -. "shared scene code" .- WEB
+  REND ~~~ STOP
+
+  classDef mainC fill:#fde68a,stroke:#b45309,color:#111
+  classDef chanC fill:#ddd6fe,stroke:#6d28d9,color:#111
+  classDef rendC fill:#99f6e4,stroke:#0f766e,color:#111
+  classDef timerC fill:#cffafe,stroke:#0e7490,color:#111
+  classDef logC fill:#bfdbfe,stroke:#1d4ed8,color:#111
+  classDef clockC fill:#e5e7eb,stroke:#4b5563,color:#111
+  classDef stopC fill:#fecaca,stroke:#b91c1c,color:#111
+  class WIN,EV,POLLPACE,PUB mainC
+  class MU,BM,SL,FB chanC
+  class INIT,CONS,WORK,DRAW,SWAP,WAIT rendC
+  class TIMER timerC
+  class LOGB logC
+  class CLK,WEB clockC
+  class S1,S2,S3,S4 stopC
+  style MAIN fill:transparent,stroke:#b45309
+  style CHAN fill:transparent,stroke:#6d28d9
+  style REND fill:transparent,stroke:#0f766e
+  style STOP fill:transparent,stroke:#b91c1c
 ```
 
-Every timestamp on both threads comes from `pacer_now_ns()`, one monotonic
-timeline for deadlines, sleeps, publishes, and consumes; that is what makes
-`input_latency_ns = consume - publish` a same-clock subtraction. The sleep
-under `FramePacer` is each platform's sharpest timer (details in the
-[CLI reference](#cli-flags)). Shutdown order is load-bearing: signal stop →
-render thread deletes its GL objects and detaches the context → join →
-destroy the window on main.
-
-The Emscripten build compiles the right-hand loop out entirely: the browser
-build is single-threaded and `requestAnimationFrame`-paced, reusing the same
-`SceneGL` scene code, because neither high-resolution sleep nor a
-second-thread GL context exists on a browser main thread.
+Color key: amber is the main thread, violet is the handoff, teal is the
+render thread (lighter teal: the platform timer under the pacer's sleep),
+blue is instrumentation, red is the shutdown sequence, gray is shared
+infrastructure. The single `pacer_now_ns()` clock is what makes
+`input_latency_ns = consume - publish` a same-clock subtraction; flag
+semantics live in the [CLI reference](#cli-flags).
 
 ## Measured results
 
