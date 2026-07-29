@@ -1,5 +1,7 @@
 # OpenGL-Renderer
 
+Live at: **[Live demo + frame pacer lab](https://opengl-renderer.pages.dev/)**
+
 A C++20 threaded OpenGL renderer whose real subject is three systems
 problems: thread-affine graphics contexts, a lock-free input handoff, and
 precise frame pacing on general-purpose OSes. The rotating cube is the demo,
