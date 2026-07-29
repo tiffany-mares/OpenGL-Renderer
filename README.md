@@ -5,11 +5,11 @@ A C++20 threaded OpenGL renderer whose real subject is three systems problems
 frame pacing on general-purpose OSes; the rotating cube is the demo, not the
 point.
 
-**[Live demo + benchmark dashboard](https://opengl-renderer.pages.dev/)** — the
-cube compiled to WebAssembly as the hook, above a static dashboard of the
+**[Live demo + frame pacer lab](https://opengl-renderer.pages.dev/)** — the
+cube compiled to WebAssembly as the hook, above an interactive writeup of the
 native build's committed benchmark results. The pacer and the threaded render
-deliberately do not port; every number on the page is fetched from files in
-this repo, none re-measured in the browser.
+deliberately do not port; every number on the page is generated at build time
+from files committed in this repo, none re-measured in the browser.
 
 ![The demo: a flat-shaded cube rotating one full turn, captured in-app at a paced 50 fps](docs/cube.gif)
 
@@ -307,31 +307,37 @@ dev-only dependencies, never installed in CI: `bench/plot_frames.py`
 The live demo is the same three translation units compiled with Emscripten
 (`__EMSCRIPTEN__` guards select a single-threaded path: no render thread, no
 pacer — `requestAnimationFrame` owns the frame clock, and the page explains
-why that boundary exists). Build it locally with an activated emsdk:
+why that boundary exists). Build the wasm cube locally with an activated
+emsdk (the lab build stages it from `dist/`):
 
     python web/build.py --out dist
-    python -m http.server 8000 -d dist
 
-The page below the cube is a static dashboard of the committed native
-results: `web/build.py` stages `web/dashboard.js`, a vendored Chart.js
-(`web/vendor/`, pinned like the glad header), `web/data/frametime-hist.json`
-(exported from the pacing run of record by `bench/export_hist.py`), and the
-two committed results CSVs under `dist/data/`. The dashboard fetches its
-data, so previews need the `http.server` above — `file://` will not work.
-Provenance: [bench/results/2026-07-28-web-dashboard.md](bench/results/2026-07-28-web-dashboard.md).
+The page below the cube is the frame pacer lab (`lab/`, a TanStack
+Start/React app): backstory, how the pacer works, the tuned-vs-naive
+histograms and tables, the input-handoff benchmarks, and a decision log.
+It is fully static — `lab/scripts/gen-lab-data.mjs` bakes the committed
+bench CSVs/JSONs into the page at build time (FATAL on any missing input),
+and `npm run build` prerenders it into `lab/dist/client`:
 
-Deployed automatically to Cloudflare Pages (wrangler Direct Upload from
-`.github/workflows/pages.yml`) on every push to main, with emsdk pinned to
-the version recorded there. The original GitHub Pages URL serves a permanent
-redirect here.
+    cd lab
+    npm ci
+    npm run gen-data
+    npm run build
+    python -m http.server 8000 -d dist/client
 
-The dashboard also carries weekly CI results from windows-latest and
+Deployed automatically to Cloudflare Pages (wrangler Direct Upload of
+`lab/dist/client` from `.github/workflows/pages.yml`) on every push to
+main, with emsdk pinned to the version recorded there. The original GitHub
+Pages URL serves a permanent redirect here.
+
+The lab also carries weekly CI results from windows-latest and
 ubuntu-latest (both Mesa llvmpipe software GL), bot-committed under
-`bench/results/ci/<platform>/` and staged by `web/build.py` into
-`platforms.json`, honestly labeled as a different measurement class from
-the desktop numbers — a shared virtualized runner with no AC/idle control.
-The desktop run of record stays the dashboard's default view; the CI
-platforms are a switchable comparison, not a replacement. Pipeline details:
+`bench/results/ci/<platform>/` by `bench.yml`, which then re-dispatches
+the deploy so `gen-data` bakes the fresh numbers in. They are honestly
+labeled as a different measurement class from the desktop numbers — a
+shared virtualized runner with no AC/idle control. The desktop run of
+record stays the default view; the CI platforms are a switchable
+comparison, not a replacement. Pipeline details:
 [bench/results/2026-07-28-ci-pipeline.md](bench/results/2026-07-28-ci-pipeline.md).
 
 ### CLI reference
