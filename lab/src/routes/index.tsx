@@ -140,21 +140,6 @@ function Index() {
             </li>
           ))}
         </ol>
-        <div className="mt-8 rounded-lg border border-border bg-card p-5 sm:p-6">
-          <h3 className="text-sm font-medium">The architecture, in one picture</h3>
-          <a href="/architecture.svg" target="_blank" rel="noopener">
-            <img
-              src="/architecture.svg"
-              alt="Architecture: the main thread publishes input snapshots through a swappable InputChannel to the render thread, whose loop consumes, draws, swaps, and waits on the FramePacer; a shared monotonic clock timestamps both sides, and shutdown follows a fixed order"
-              className="mt-4 w-full"
-            />
-          </a>
-          <p className="mt-3 font-mono text-xs text-muted-foreground">
-            amber: main thread · violet: input handoff · teal: render thread ·
-            blue: instrumentation · red: shutdown order · click to open full
-            size
-          </p>
-        </div>
         <div className="mt-10 rounded-lg border border-border bg-card p-5 sm:p-6">
           <h3 className="text-sm font-medium">Why this is different from a standard OpenGL renderer</h3>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{highlight(HOW_IT_WORKS.uniqueFeatures.intro)}</p>
@@ -169,6 +154,25 @@ function Index() {
               </li>
             ))}
           </ul>
+        </div>
+      </section>
+
+      {/* System architecture */}
+      <section id="architecture" className="mt-14 scroll-mt-20">
+        <h2 className="text-sm font-medium">System architecture</h2>
+        <div className="mt-3 rounded-lg border border-border bg-card p-5 sm:p-6">
+          <a href="/architecture.svg" target="_blank" rel="noopener">
+            <img
+              src="/architecture.svg"
+              alt="Architecture: the main thread publishes input snapshots through a swappable InputChannel to the render thread, whose loop consumes, draws, swaps, and waits on the FramePacer; a shared monotonic clock timestamps both sides, and shutdown follows a fixed order"
+              className="w-full"
+            />
+          </a>
+          <p className="mt-3 font-mono text-xs text-muted-foreground">
+            amber: main thread · violet: input handoff · teal: render thread ·
+            blue: instrumentation · red: shutdown order · click to open full
+            size
+          </p>
         </div>
       </section>
 

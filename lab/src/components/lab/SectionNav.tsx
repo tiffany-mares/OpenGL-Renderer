@@ -6,6 +6,7 @@ const ITEMS = [
   { id: "demo", label: "cube" },
   { id: "backstory", label: "backstory" },
   { id: "how-it-works", label: "how it works" },
+  { id: "architecture", label: "system architecture" },
   { id: "metrics", label: "numbers" },
   { id: "histogram", label: "histogram" },
   { id: "results", label: "results" },
