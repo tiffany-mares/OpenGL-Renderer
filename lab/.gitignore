@@ -32,7 +32,7 @@ dist-ssr
 *.sw?
 
 # staged artifacts (copied by scripts/stage-cube.mjs: cube from web/build.py's
-# dist/, diagram from docs/architecture-dark.svg)
+# dist/, diagram from docs/architecture.png)
 public/cube.js
 public/cube.wasm
-public/architecture.svg
+public/architecture.png

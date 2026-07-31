@@ -77,16 +77,17 @@ dev-only dependencies, never installed in CI: `bench/plot_frames.py`
 Two threads, one channel between them, and a pacer that owns the frame
 clock instead of vsync:
 
-[![Architecture: the main thread publishes input snapshots through a swappable InputChannel to the render thread, whose loop consumes, draws, swaps, and waits on the FramePacer; a shared monotonic clock timestamps both sides, and shutdown follows a fixed order](docs/architecture.svg)](docs/architecture.svg)
+[![Architecture: the main thread publishes input snapshots through a swappable InputChannel to the render thread, whose loop consumes, draws, swaps, and waits on the FramePacer; a shared monotonic clock timestamps both sides, and shutdown follows a fixed order](docs/architecture.png)](docs/architecture.png)
 
-Color key: amber is the main thread, violet is the handoff, teal is the
-render thread (lighter teal: the platform timer under the pacer's sleep),
-blue is instrumentation, red is the shutdown sequence, gray is shared
-infrastructure. Click the diagram for the full-size version. The single
-`pacer_now_ns()` clock is what makes `input_latency_ns = consume - publish`
-a same-clock subtraction; flag semantics live in the
-[CLI reference](#cli-flags). Diagram source: `docs/architecture.mmd`
-(rendered to `docs/architecture.svg`, regeneration notes in the file).
+Color key: orange is the main thread, teal is the input handoff (the
+three `InputChannel` backends), yellow is the render thread, magenta is
+the shared monotonic clock, violet is the shutdown sequence, and the
+standalone blue nodes are instrumentation and platform infrastructure
+(FrameLog, the per-OS timer, the web build). Click the diagram for the
+full-size version. The single `pacer_now_ns()` clock is what makes
+`input_latency_ns = consume - publish` a same-clock subtraction; flag
+semantics live in the [CLI reference](#cli-flags). The diagram is
+committed at `docs/architecture.png`.
 
 ## Measured results
 

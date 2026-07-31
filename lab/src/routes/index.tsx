@@ -161,17 +161,17 @@ function Index() {
       <section id="architecture" className="mt-14 scroll-mt-20">
         <h2 className="text-sm font-medium">System architecture</h2>
         <div className="mt-3 rounded-lg border border-border bg-card p-5 sm:p-6">
-          <a href="/architecture.svg" target="_blank" rel="noopener">
+          <a href="/architecture.png" target="_blank" rel="noopener">
             <img
-              src="/architecture.svg"
+              src="/architecture.png"
               alt="Architecture: the main thread publishes input snapshots through a swappable InputChannel to the render thread, whose loop consumes, draws, swaps, and waits on the FramePacer; a shared monotonic clock timestamps both sides, and shutdown follows a fixed order"
               className="w-full"
             />
           </a>
           <p className="mt-3 font-mono text-xs text-muted-foreground">
-            amber: main thread · violet: input handoff · teal: render thread ·
-            blue: instrumentation · red: shutdown order · click to open full
-            size
+            orange: main thread · teal: input handoff · yellow: render thread
+            · magenta: shared clock · violet: shutdown order · click to open
+            full size
           </p>
         </div>
       </section>
