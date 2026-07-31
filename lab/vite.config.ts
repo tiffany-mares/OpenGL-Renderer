@@ -17,6 +17,14 @@ export default defineConfig({
     // The prerender pass builds from this
     server: { entry: "server" },
     // Static prerender: the single route bakes to dist/client/index.html.
-    prerender: { enabled: true, crawlLinks: true },
+    // filter: the crawler follows <a href> links, fetches them as TEXT, and
+    // writes the result into dist/client -- a UTF-8 round-trip that corrupts
+    // binary assets (it overwrote the diagram PNG the page links to for
+    // click-to-zoom). Keep it away from non-route asset links.
+    prerender: {
+      enabled: true,
+      crawlLinks: true,
+      filter: (page) => !/\.(png|gif|jpg|jpeg|webp|wasm|ico|csv|json)$/i.test(page.path),
+    },
   },
 });
