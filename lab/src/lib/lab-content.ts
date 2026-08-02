@@ -8,7 +8,7 @@ export const BACKSTORY = {
   title: "Backstory",
   paragraphs: [
     `This is the writeup of a C++20 OpenGL renderer whose real subject was never the cube, it was three systems problems: a graphics context that must live on one thread, a lock-free input handoff between two, and hitting a frame deadline on a general-purpose OS. The cube is the demo. The pacer is the point.`,
-    `A render loop is simple on paper: do the work, wait for the next deadline, repeat. The "wait" is where the OS gets a say. A request to sleep for a few milliseconds is honored at the scheduler's convenience, on a stock Windows CI runner that means waking on the 15.6 ms timer tick, and even on a desktop with a high-resolution timer request the wake lands 2–3 ms late often enough to eat the frame. The OS is optimized for throughput and battery, not sub-millisecond wake-up precision.`,
+    `A render loop is simple on paper: do the work, wait for the next deadline, repeat. The "wait" is where the OS gets a say. A request to sleep for a few milliseconds is honored at the scheduler's convenience, on a stock Windows CI runner that means waking on the 15.6 ms timer tick, and even on a desktop with a high-resolution timer request the wake lands 2 to 3 ms late often enough to eat the frame. The OS is optimized for throughput and battery, not sub-millisecond wake-up precision.`,
     `Everything below is measured, not asserted: 10,000 frames per configuration (first 500 discarded as warmup), per-frame CSV logging with no file IO inside a timed frame, and a synthetic ~100 µs CPU workload per frame so the numbers characterize the pacer rather than the GPU. Three platforms: the desktop run of record (Windows 11, Intel Arc) and two weekly CI runners (windows-latest and ubuntu-latest, both Mesa llvmpipe software GL, honestly a different measurement class, labeled as such).`,
   ],
   context: [
@@ -79,7 +79,7 @@ export const DECISIONS: Decision[] = [
   {
     title: "An adaptive spin margin, not a constant",
     reasoning:
-      "The margin the sleep must undershoot by is machine- and power-plan-dependent: this desktop's naive sleep wakes 2–3 ms late, while a stock Windows CI runner sleeps in full 15.6 ms scheduler ticks, a constant tuned on either machine is wrong on the other, in either direction. So the pacer estimates it online from every sleep's measured overshoot: Welford mean + 3σ, clamped to half the period, with a 1.5 ms bootstrap until 16 samples.",
+      "The margin the sleep must undershoot by is machine- and power-plan-dependent: this desktop's naive sleep wakes 2 to 3 ms late, while a stock Windows CI runner sleeps in full 15.6 ms scheduler ticks, a constant tuned on either machine is wrong on the other, in either direction. So the pacer estimates it online from every sleep's measured overshoot: Welford mean + 3σ, clamped to half the period, with a 1.5 ms bootstrap until 16 samples.",
     changeMind:
       "would change my mind: an overshoot distribution heavy-tailed enough that mean + 3σ under-covers (it would show up as rising missed-deadline counts) would argue for a quantile tracker; a hard-real-time platform with bounded overshoot would argue for a small constant.",
   },
@@ -114,7 +114,7 @@ export const HANDOFF = {
     `This section is rate-independent, its x-axis IS the publish rate, so the Hz filter above doesn't apply here.`,
   ],
   costNote: `Amortized throughput from 1 M-iteration batches, comparable across backends, not "what one isolated call costs."`,
-  sweepNote: `Reader p99 vs achieved publish rate. Points sit at each run's achieved rate; the unthrottled cells land where each backend actually reached. Low-rate read tails sit at each machine's clock measurement floor, 100 ns on the Windows machines, ≈30–50 ns on the Ubuntu runner.`,
+  sweepNote: `Reader p99 vs achieved publish rate. Points sit at each run's achieved rate; the unthrottled cells land where each backend actually reached. Low-rate read tails sit at each machine's clock measurement floor, 100 ns on the Windows machines, ≈30 to 50 ns on the Ubuntu runner.`,
   sweepCrossover: `≈100 k/s, the crossover`,
   appNote: `In-app end-to-end latency (consume time − publish timestamp), desktop run of record. The bitmask cannot carry the timestamp, 32 bits of keys is all it holds, so its latency is unmeasurable by construction: the Phase-4 asymmetry made visible. App cells are a desktop protocol; CI runs measure only the micro-benchmark.`,
 };

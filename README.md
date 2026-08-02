@@ -17,7 +17,7 @@ from files committed in this repo, none re-measured in the browser.
 
 - [The demo](#the-demo)
 - [Quick start](#quick-start)
-- [Architecture](#architecture)
+- [System architecture diagram](#system-architecture-diagram)
 - [Measured results](#measured-results): [figures](#the-pacer-visualized),
   [pacing](#pacing-at-144-hz), [input handoff](#input-handoff)
 - [Decision log](#decision-log)
@@ -72,7 +72,7 @@ dev-only dependencies, never installed in CI: `bench/plot_frames.py`
 (matplotlib) and `bench/make_gif.py` (Pillow). Everything else under
 `bench/` is stdlib-only.
 
-## Architecture
+## System architecture diagram
 
 Two threads, one channel between them, and a pacer that owns the frame
 clock instead of vsync:
@@ -200,7 +200,7 @@ cannot move. An event queue shipping every edge across instead of snapshot
 publishing.
 
 **Evidence.** The decoupled rates are the payoff: against a 144 Hz consumer
-the app publishes at ~968–971 Hz achieved, and measured end-to-end input
+the app publishes at ~968 to 971 Hz achieved, and measured end-to-end input
 latency runs p50 ≈0.64 ms against a 6.9 ms frame period, so a frame cap no
 longer sets input latency. The cost was paid once, in shutdown ordering:
 signal stop → render thread deletes its GL objects and detaches the context
@@ -248,7 +248,7 @@ candidate). No margin at all, the bare `timer` strategy. Pure spin. A
 quantile estimator (P²) instead of mean + 3σ.
 
 **Evidence.** The quantity the margin must cover is machine- and power-plan-
-dependent: this machine's naive sleep wakes 2–3 ms late, not the full
+dependent: this machine's naive sleep wakes 2 to 3 ms late, not the full
 15.6 ms scheduler tick the classic Windows numbers assume, so a constant
 tuned on either machine is wrong on the other, in either direction. The
 price and payoff are in the tables above: at 144 Hz the bare timer costs

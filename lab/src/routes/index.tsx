@@ -528,7 +528,7 @@ const KEYWORDS: { term: string; accent: Parameters<typeof Key>[0]["accent"] }[] 
   { term: "≈0.002 per second", accent: "metric-1" },
   { term: "15.6 ms timer tick", accent: "series-naive" },
   { term: "15.6 ms scheduler ticks", accent: "series-naive" },
-  { term: "2–3 ms late", accent: "series-naive" },
+  { term: "2 to 3 ms late", accent: "series-naive" },
   { term: "p50 ≈ 0.64 ms", accent: "metric-1" },
   { term: "0.345 ms", accent: "metric-1" },
   { term: "+0.664 ms per frame", accent: "series-naive" },
